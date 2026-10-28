@@ -1,0 +1,27 @@
+{
+  "name": "taskflow-mern",
+  "version": "1.0.0",
+  "description": "Modern Task Management Web Application built with the MERN stack",
+  "private": true,
+  "scripts": {
+    "install:server": "cd server && npm install",
+    "install:client": "cd client && npm install",
+    "install:all": "npm run install:server && npm run install:client",
+    "server": "cd server && npm run dev",
+    "server:start": "cd server && npm start",
+    "client": "cd client && npm run dev",
+    "client:build": "cd client && npm run build",
+    "test:server": "cd server && npm test"
+  },
+  "keywords": [
+    "mern",
+    "task-management",
+    "react",
+    "nodejs",
+    "express",
+    "mongodb",
+    "tailwind"
+  ],
+  "author": "",
+  "license": "ISC"
+}
