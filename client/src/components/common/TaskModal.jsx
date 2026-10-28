@@ -1,16 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { X, AlertCircle } from 'lucide-react';
+import { X, AlertCircle, UserCheck, Layers, Lock } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import api from '../../services/api';
 
 const CATEGORY_SUGGESTIONS = ['Work', 'Personal', 'Study', 'Urgent', 'Health', 'Project'];
 
 export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting = false }) => {
+  const { currentOrg, workspaces, currentWorkspace } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('medium');
   const [status, setStatus] = useState('pending');
   const [dueDate, setDueDate] = useState('');
   const [category, setCategory] = useState('General');
+  const [assignedTo, setAssignedTo] = useState('');
+  const [workspaceId, setWorkspaceId] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [members, setMembers] = useState([]);
   const [error, setError] = useState('');
+
+  // Fetch members when modal is opened
+  useEffect(() => {
+    if (isOpen && currentOrg?._id) {
+      api.get(`/organizations/${currentOrg._id}/members`)
+        .then((res) => {
+          if (res.data.success) {
+            setMembers(res.data.members || []);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen, currentOrg?._id]);
 
   useEffect(() => {
     if (task) {
@@ -18,6 +38,9 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
       setDescription(task.description || '');
       setPriority(task.priority || 'medium');
       setStatus(task.status || 'pending');
+      setAssignedTo(task.assignedTo?._id || task.assignedTo || '');
+      setWorkspaceId(task.workspace?._id || task.workspace || '');
+      setIsPrivate(Boolean(task.isPrivate));
 
       // Preserve date string without timezone skew
       let dateVal = '';
@@ -39,9 +62,12 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
       setStatus('pending');
       setDueDate('');
       setCategory('General');
+      setAssignedTo('');
+      setWorkspaceId(currentWorkspace?._id || '');
+      setIsPrivate(false);
     }
     setError('');
-  }, [task, isOpen]);
+  }, [task, isOpen, currentWorkspace]);
 
   if (!isOpen) return null;
 
@@ -60,7 +86,10 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
       status,
       dueDate: dueDate || null,
       dueDateString: dueDate || null,
-      category: category.trim() || 'General'
+      category: category.trim() || 'General',
+      assignedTo: assignedTo || null,
+      workspaceId: workspaceId || null,
+      isPrivate
     });
   };
 
@@ -85,7 +114,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           {error && (
             <div className="flex items-center gap-2 p-3 text-sm text-rose-600 bg-rose-50 dark:bg-rose-950/50 dark:text-rose-300 rounded-xl border border-rose-200 dark:border-rose-900">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -100,11 +129,9 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
             </label>
             <input
               type="text"
-              required
-              autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g., Complete project documentation"
+              placeholder="e.g. Design multi-tenant database migration"
               disabled={isSubmitting}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-850 transition-colors"
             />
@@ -113,30 +140,29 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
           {/* Description */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-              Description <span className="text-slate-400 text-xs font-normal">(optional)</span>
+              Description
             </label>
             <textarea
-              rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add key notes, links, or sub-details..."
+              placeholder="Add key deliverables, acceptance criteria, or context..."
+              rows={3}
               disabled={isSubmitting}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-850 transition-colors resize-none"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-850 transition-colors"
             />
           </div>
 
-          {/* Priority & Status Grid */}
+          {/* Priority & Status */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Priority */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
                 Priority
               </label>
               <div className="grid grid-cols-3 gap-1.5">
                 {[
-                  { value: 'low', label: 'Low', color: 'border-emerald-300 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40' },
-                  { value: 'medium', label: 'Medium', color: 'border-amber-300 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40' },
-                  { value: 'high', label: 'High', color: 'border-rose-300 text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40' }
+                  { value: 'low', label: 'Low', color: 'text-slate-600' },
+                  { value: 'medium', label: 'Medium', color: 'text-amber-600' },
+                  { value: 'high', label: 'High', color: 'text-rose-600' }
                 ].map((item) => (
                   <button
                     key={item.value}
@@ -145,7 +171,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                     onClick={() => setPriority(item.value)}
                     className={`py-2 px-2 text-xs font-medium rounded-xl border text-center transition-all ${
                       priority === item.value
-                        ? `${item.color} font-bold ring-2 ring-indigo-500/50 shadow-xs`
+                        ? 'border-indigo-500 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 font-bold ring-2 ring-indigo-500/50 shadow-xs'
                         : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700'
                     }`}
                   >
@@ -155,7 +181,6 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
               </div>
             </div>
 
-            {/* Status */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
                 Status
@@ -183,25 +208,64 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
             </div>
           </div>
 
-          {/* Due Date & Category Grid */}
+          {/* Assignee & Workspace */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Due Date */}
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                Due Date <span className="text-slate-400 text-xs font-normal">(User Local Date)</span>
+              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Assignee</span>
               </label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  disabled={isSubmitting}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-850 transition-colors"
-                />
-              </div>
+              <select
+                value={assignedTo}
+                onChange={(e) => setAssignedTo(e.target.value)}
+                disabled={isSubmitting}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+              >
+                <option value="">Unassigned</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.user?._id}>
+                    {m.user?.name} ({m.role})
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Category */}
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                <Layers className="w-3.5 h-3.5 text-purple-500" />
+                <span>Workspace</span>
+              </label>
+              <select
+                value={workspaceId}
+                onChange={(e) => setWorkspaceId(e.target.value)}
+                disabled={isSubmitting}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+              >
+                <option value="">Default (General)</option>
+                {workspaces.map((ws) => (
+                  <option key={ws._id} value={ws._id}>
+                    {ws.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Due Date & Category */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                Due Date <span className="text-slate-400 text-xs font-normal">(Local Date)</span>
+              </label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                disabled={isSubmitting}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
                 Category
@@ -213,7 +277,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                 placeholder="e.g. Work, Personal"
                 list="category-suggestions"
                 disabled={isSubmitting}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-850 transition-colors"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <datalist id="category-suggestions">
                 {CATEGORY_SUGGESTIONS.map((cat) => (
@@ -221,6 +285,21 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                 ))}
               </datalist>
             </div>
+          </div>
+
+          {/* Private Task Toggle */}
+          <div className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+            <input
+              type="checkbox"
+              id="isPrivate"
+              checked={isPrivate}
+              onChange={(e) => setIsPrivate(e.target.checked)}
+              className="w-4 h-4 text-indigo-600 rounded-sm border-slate-300 focus:ring-indigo-500"
+            />
+            <label htmlFor="isPrivate" className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
+              <Lock className="w-3.5 h-3.5 text-amber-500" />
+              <span>Mark as Private (Restricted from Guest and Billing Admin viewers)</span>
+            </label>
           </div>
 
           {/* Footer Actions */}

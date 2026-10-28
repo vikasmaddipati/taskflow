@@ -23,6 +23,11 @@ const workspaceSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    isArchived: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'

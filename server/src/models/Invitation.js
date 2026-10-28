@@ -15,13 +15,22 @@ const invitationSchema = new mongoose.Schema(
       trim: true,
       index: true
     },
+    workspace: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Workspace',
+      default: null
+    },
     role: {
       type: String,
-      enum: ['admin', 'member', 'guest'],
+      enum: ['admin', 'manager', 'member', 'guest', 'billing_admin'],
       default: 'member',
       required: true
     },
     token: {
+      type: String,
+      default: null
+    },
+    tokenHash: {
       type: String,
       required: true,
       unique: true,

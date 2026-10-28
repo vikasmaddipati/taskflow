@@ -1,7 +1,10 @@
 import Task from '../models/Task.js';
+import Membership from '../models/Membership.js';
+import Team from '../models/Team.js';
 import AuditLog from '../models/AuditLog.js';
 import { getTimezoneDayBoundaries, normalizeDueDate, getValidTimezone } from '../utils/timezone.js';
 import { getOrgPlan } from '../config/plans.js';
+import { ROLES, PERMISSIONS, hasPermission } from '../config/permissions.js';
 
 // @desc    Get paginated tasks for active organization with search, filter, and sorting
 // @route   GET /api/tasks
@@ -13,6 +16,8 @@ export const getTasks = async (req, res, next) => {
       status,
       priority,
       category,
+      workspaceId,
+      teamId,
       view,
       sortBy = 'createdAt',
       sortOrder = 'desc',
@@ -35,10 +40,34 @@ export const getTasks = async (req, res, next) => {
       isDeleted: false
     };
 
+    // Workspace filtering
+    const activeWorkspaceId = workspaceId || req.headers['x-workspace-id'];
+    if (activeWorkspaceId && activeWorkspaceId.match(/^[0-9a-fA-F]{24}$/)) {
+      query.workspace = activeWorkspaceId;
+    }
+
+    // Team filtering
+    if (teamId && teamId.match(/^[0-9a-fA-F]{24}$/)) {
+      query.team = teamId;
+    }
+
+    // Role-level resource isolation
+    const role = req.membership?.role;
+    if (role === ROLES.GUEST) {
+      // Guests can only see tasks explicitly created by, assigned to, or shared with them
+      query.$or = [
+        { user: req.user._id },
+        { assignedTo: req.user._id },
+        { collaborators: req.user._id }
+      ];
+    } else if (role === ROLES.BILLING_ADMIN) {
+      // Billing Admins are denied access to private tasks
+      query.isPrivate = false;
+    }
+
     // Specific view filters
     if (view === 'today') {
-      // My Day: tasks due today OR overdue pending tasks
-      query.$or = [
+      const todayCondition = [
         { dueDateString: todayStr },
         { dueDate: { $gte: startOfToday, $lte: endOfToday } },
         {
@@ -49,12 +78,23 @@ export const getTasks = async (req, res, next) => {
           ]
         }
       ];
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, { $or: todayCondition }];
+        delete query.$or;
+      } else {
+        query.$or = todayCondition;
+      }
     } else if (view === 'upcoming') {
-      // Upcoming: future tasks
-      query.$or = [
+      const upcomingCondition = [
         { dueDateString: { $gt: todayStr } },
         { dueDate: { $gt: endOfToday } }
       ];
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, { $or: upcomingCondition }];
+        delete query.$or;
+      } else {
+        query.$or = upcomingCondition;
+      }
     } else if (view === 'completed') {
       query.status = 'completed';
     }
@@ -63,10 +103,16 @@ export const getTasks = async (req, res, next) => {
     if (status && status !== 'all' && !view) {
       if (status === 'overdue') {
         query.status = 'pending';
-        query.$or = [
+        const overdueCondition = [
           { dueDateString: { $lt: todayStr, $ne: null } },
           { dueDate: { $lt: startOfToday, $ne: null } }
         ];
+        if (query.$or) {
+          query.$and = [{ $or: query.$or }, { $or: overdueCondition }];
+          delete query.$or;
+        } else {
+          query.$or = overdueCondition;
+        }
       } else if (status === 'pending' || status === 'completed') {
         query.status = status;
       }
@@ -79,16 +125,20 @@ export const getTasks = async (req, res, next) => {
 
     // Category filter
     if (category && category !== 'all') {
-      query.category = { $regex: new RegExp(`^${category.trim()}$`, 'i') };
+      query.category = category;
     }
 
-    // Search filter
-    if (search && search.trim() !== '') {
+    // Search filter across title and description
+    if (search && search.trim()) {
       const searchRegex = new RegExp(search.trim(), 'i');
-      query.$and = query.$and || [];
-      query.$and.push({
-        $or: [{ title: searchRegex }, { description: searchRegex }]
-      });
+      if (query.$and) {
+        query.$and.push({ $or: [{ title: searchRegex }, { description: searchRegex }] });
+      } else if (query.$or) {
+        query.$and = [{ $or: query.$or }, { $or: [{ title: searchRegex }, { description: searchRegex }] }];
+        delete query.$or;
+      } else {
+        query.$or = [{ title: searchRegex }, { description: searchRegex }];
+      }
     }
 
     // Sorting
@@ -113,7 +163,10 @@ export const getTasks = async (req, res, next) => {
         .skip(skip)
         .limit(parsedLimit)
         .populate('assignedTo', 'name email avatar')
-        .populate('user', 'name email avatar'),
+        .populate('collaborators', 'name email avatar')
+        .populate('user', 'name email avatar')
+        .populate('workspace', 'name isDefault')
+        .populate('team', 'name'),
       Task.distinct('category', { organization: orgId, isDeleted: false })
     ]);
 
@@ -142,7 +195,7 @@ export const getTasks = async (req, res, next) => {
   }
 };
 
-// @desc    Get dashboard statistics for active organization
+// @desc    Get dashboard metrics and counts for active organization
 // @route   GET /api/tasks/stats
 // @access  Private
 export const getTaskStats = async (req, res, next) => {
@@ -152,6 +205,17 @@ export const getTaskStats = async (req, res, next) => {
     const { start: startOfToday, end: endOfToday, dateString: todayStr } = getTimezoneDayBoundaries(clientTz);
 
     const baseFilter = { organization: orgId, isDeleted: false };
+    const role = req.membership?.role;
+
+    if (role === ROLES.GUEST) {
+      baseFilter.$or = [
+        { user: req.user._id },
+        { assignedTo: req.user._id },
+        { collaborators: req.user._id }
+      ];
+    } else if (role === ROLES.BILLING_ADMIN) {
+      baseFilter.isPrivate = false;
+    }
 
     const [
       total,
@@ -175,36 +239,51 @@ export const getTaskStats = async (req, res, next) => {
       }),
       Task.countDocuments({
         ...baseFilter,
+        status: 'pending',
         $or: [
           { dueDateString: todayStr },
           { dueDate: { $gte: startOfToday, $lte: endOfToday } }
         ]
       }),
-      Task.find(baseFilter).sort({ createdAt: -1 }).limit(5),
+      Task.find(baseFilter)
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .populate('assignedTo', 'name email avatar')
+        .populate('user', 'name email avatar'),
       Task.find({
         ...baseFilter,
         status: 'pending',
         $or: [
-          { dueDateString: { $gte: todayStr } },
-          { dueDate: { $gte: startOfToday } }
+          { dueDateString: { $gte: todayStr, $ne: null } },
+          { dueDate: { $gte: startOfToday, $ne: null } }
         ]
       })
         .sort({ dueDate: 1, dueDateString: 1 })
         .limit(5)
+        .populate('assignedTo', 'name email avatar')
+        .populate('user', 'name email avatar')
     ]);
 
-    // Priority breakdown via aggregation
+    // Priority breakdown via aggregation pipeline scoped strictly to tenant
     const priorityStats = await Task.aggregate([
-      { $match: { organization: orgId, isDeleted: false } },
+      { $match: baseFilter },
       { $group: { _id: '$priority', count: { $sum: 1 } } }
     ]);
 
     const priorityBreakdown = { low: 0, medium: 0, high: 0 };
     priorityStats.forEach((p) => {
-      if (p._id && priorityBreakdown[p._id] !== undefined) {
+      if (priorityBreakdown[p._id] !== undefined) {
         priorityBreakdown[p._id] = p.count;
       }
     });
+
+    // Category breakdown via aggregation pipeline scoped to tenant
+    const categoryStats = await Task.aggregate([
+      { $match: baseFilter },
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 8 }
+    ]);
 
     res.status(200).json({
       success: true,
@@ -215,17 +294,21 @@ export const getTaskStats = async (req, res, next) => {
         overdue,
         dueToday,
         completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
-        priorityBreakdown
-      },
-      recentTasks,
-      upcomingDeadlines
+        priorityBreakdown,
+        categoryBreakdown: categoryStats.map((c) => ({
+          category: c._id || 'General',
+          count: c.count
+        })),
+        recentTasks,
+        upcomingDeadlines
+      }
     });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Get single task
+// @desc    Get single task by ID
 // @route   GET /api/tasks/:id
 // @access  Private
 export const getTaskById = async (req, res, next) => {
@@ -236,12 +319,37 @@ export const getTaskById = async (req, res, next) => {
       isDeleted: false
     })
       .populate('assignedTo', 'name email avatar')
-      .populate('user', 'name email avatar');
+      .populate('collaborators', 'name email avatar')
+      .populate('user', 'name email avatar')
+      .populate('workspace', 'name isDefault')
+      .populate('team', 'name')
+      .populate('comments.user', 'name email avatar');
 
     if (!task) {
       return res.status(404).json({
         success: false,
         message: 'Task not found or has been deleted'
+      });
+    }
+
+    const role = req.membership?.role;
+
+    // Role-level checks
+    if (role === ROLES.GUEST) {
+      const isCreator = task.user._id.toString() === req.user._id.toString();
+      const isAssignee = task.assignedTo && task.assignedTo._id.toString() === req.user._id.toString();
+      const isCollaborator = task.collaborators?.some((c) => c._id.toString() === req.user._id.toString());
+      if (!isCreator && !isAssignee && !isCollaborator) {
+        return res.status(404).json({
+          success: false,
+          message: 'Task not found or access denied'
+        });
+      }
+    } else if (role === ROLES.BILLING_ADMIN && task.isPrivate) {
+      return res.status(403).json({
+        success: false,
+        code: 'BILLING_ADMIN_RESTRICTION',
+        message: 'Billing administrators are not permitted to view private tasks'
       });
     }
 
@@ -254,12 +362,25 @@ export const getTaskById = async (req, res, next) => {
   }
 };
 
-// @desc    Create a new task with quota validation
+// @desc    Create a new task with quota and assignment validation
 // @route   POST /api/tasks
 // @access  Private
 export const createTask = async (req, res, next) => {
   try {
-    const { title, description, priority, status, dueDate, dueDateString, category, assignedTo } = req.body;
+    const {
+      title,
+      description,
+      priority,
+      status,
+      dueDate,
+      dueDateString,
+      category,
+      assignedTo,
+      collaboratorIds = [],
+      workspaceId,
+      teamId,
+      isPrivate
+    } = req.body;
 
     if (!title || title.trim() === '') {
       return res.status(400).json({
@@ -268,10 +389,12 @@ export const createTask = async (req, res, next) => {
       });
     }
 
+    const orgId = req.organization._id;
+
     // Check organization plan entitlements
     const orgPlan = getOrgPlan(req.organization);
     const currentTaskCount = await Task.countDocuments({
-      organization: req.organization._id,
+      organization: orgId,
       isDeleted: false
     });
 
@@ -285,12 +408,54 @@ export const createTask = async (req, res, next) => {
       });
     }
 
+    // Validate assigned user belongs to this organization
+    let validAssignee = null;
+    if (assignedTo) {
+      const isMember = await Membership.findOne({ organization: orgId, user: assignedTo });
+      if (!isMember) {
+        return res.status(400).json({
+          success: false,
+          code: 'INVALID_ASSIGNEE',
+          message: 'Assigned user is not an active member of this organization'
+        });
+      }
+      validAssignee = assignedTo;
+    }
+
+    // Validate collaborators belong to this organization
+    let validCollaborators = [];
+    if (Array.isArray(collaboratorIds) && collaboratorIds.length > 0) {
+      const validMemberships = await Membership.find({
+        organization: orgId,
+        user: { $in: collaboratorIds }
+      });
+      validCollaborators = validMemberships.map((m) => m.user);
+    }
+
+    // Validate team belongs to organization
+    let validTeam = null;
+    if (teamId) {
+      const team = await Team.findOne({ organization: orgId, _id: teamId });
+      if (!team) {
+        return res.status(400).json({
+          success: false,
+          message: 'Team not found in this organization'
+        });
+      }
+      validTeam = teamId;
+    }
+
+    // Resolve workspace (provided or active default)
+    const targetWorkspaceId = workspaceId || (req.workspace ? req.workspace._id : null);
+
     const clientTz = getValidTimezone(req.headers['x-timezone']);
     const dateNorm = normalizeDueDate(dueDateString || dueDate, clientTz);
 
     const task = await Task.create({
       user: req.user._id,
-      organization: req.organization._id,
+      organization: orgId,
+      workspace: targetWorkspaceId,
+      team: validTeam,
       title: title.trim(),
       description: description ? description.trim() : '',
       priority: ['low', 'medium', 'high'].includes(priority) ? priority : 'medium',
@@ -298,54 +463,87 @@ export const createTask = async (req, res, next) => {
       dueDate: dateNorm.dueDate,
       dueDateString: dateNorm.dueDateString,
       category: category && category.trim() ? category.trim() : 'General',
-      assignedTo: assignedTo || null
+      assignedTo: validAssignee,
+      collaborators: validCollaborators,
+      isPrivate: Boolean(isPrivate)
     });
 
     // Record audit event
     await AuditLog.create({
-      organization: req.organization._id,
+      organization: orgId,
       actor: req.user._id,
       action: 'task.created',
       targetType: 'Task',
       targetId: task._id.toString(),
-      details: { title: task.title, priority: task.priority },
+      details: { title: task.title, priority: task.priority, assignedTo: validAssignee },
       ipAddress: req.ip
     });
+
+    const populatedTask = await Task.findById(task._id)
+      .populate('assignedTo', 'name email avatar')
+      .populate('collaborators', 'name email avatar')
+      .populate('user', 'name email avatar')
+      .populate('workspace', 'name isDefault');
 
     res.status(201).json({
       success: true,
       message: 'Task created successfully',
-      task
+      task: populatedTask
     });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Update a task
+// @desc    Update task details with role and assignment checks
 // @route   PUT /api/tasks/:id
 // @access  Private
 export const updateTask = async (req, res, next) => {
   try {
+    const orgId = req.organization._id;
     const task = await Task.findOne({
       _id: req.params.id,
-      organization: req.organization._id,
+      organization: orgId,
       isDeleted: false
     });
 
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: 'Task not found or access denied'
+        message: 'Task not found or has been deleted'
       });
     }
 
-    const { title, description, priority, status, dueDate, dueDateString, category, assignedTo } = req.body;
+    const role = req.membership?.role;
 
-    if (title !== undefined) {
-      if (title.trim() === '') {
-        return res.status(400).json({ success: false, message: 'Task title cannot be empty' });
+    // Guest check
+    if (role === ROLES.GUEST) {
+      const isAssignee = task.assignedTo && task.assignedTo.toString() === req.user._id.toString();
+      const isCollaborator = task.collaborators?.some((c) => c.toString() === req.user._id.toString());
+      if (!isAssignee && !isCollaborator) {
+        return res.status(403).json({
+          success: false,
+          message: 'Guests may only update tasks explicitly assigned or shared with them'
+        });
       }
+    }
+
+    const {
+      title,
+      description,
+      priority,
+      status,
+      dueDate,
+      dueDateString,
+      category,
+      assignedTo,
+      collaboratorIds,
+      workspaceId,
+      teamId,
+      isPrivate
+    } = req.body;
+
+    if (title && title.trim()) {
       task.title = title.trim();
     }
 
@@ -353,11 +551,11 @@ export const updateTask = async (req, res, next) => {
       task.description = description.trim();
     }
 
-    if (priority !== undefined && ['low', 'medium', 'high'].includes(priority)) {
+    if (priority && ['low', 'medium', 'high'].includes(priority)) {
       task.priority = priority;
     }
 
-    if (status !== undefined && ['pending', 'completed'].includes(status)) {
+    if (status && ['pending', 'completed'].includes(status)) {
       task.status = status;
     }
 
@@ -368,46 +566,113 @@ export const updateTask = async (req, res, next) => {
       task.dueDateString = dateNorm.dueDateString;
     }
 
-    if (category !== undefined) {
-      task.category = category.trim() || 'General';
+    if (category && category.trim()) {
+      task.category = category.trim();
     }
 
+    // Assignment handling: check permission and tenant membership
     if (assignedTo !== undefined) {
-      task.assignedTo = assignedTo || null;
+      if (!hasPermission(role, PERMISSIONS.TASKS_ASSIGN)) {
+        return res.status(403).json({
+          success: false,
+          code: 'PERMISSION_DENIED',
+          message: `Role '${role}' does not have permission to assign tasks`
+        });
+      }
+      if (assignedTo) {
+        const isMember = await Membership.findOne({ organization: orgId, user: assignedTo });
+        if (!isMember) {
+          return res.status(400).json({
+            success: false,
+            code: 'INVALID_ASSIGNEE',
+            message: 'Assigned user is not an active member of this organization'
+          });
+        }
+        task.assignedTo = assignedTo;
+      } else {
+        task.assignedTo = null;
+      }
+    }
+
+    if (Array.isArray(collaboratorIds)) {
+      const validMemberships = await Membership.find({
+        organization: orgId,
+        user: { $in: collaboratorIds }
+      });
+      task.collaborators = validMemberships.map((m) => m.user);
+    }
+
+    if (workspaceId && workspaceId.match(/^[0-9a-fA-F]{24}$/)) {
+      task.workspace = workspaceId;
+    }
+
+    if (teamId !== undefined) {
+      task.team = teamId || null;
+    }
+
+    if (isPrivate !== undefined) {
+      task.isPrivate = Boolean(isPrivate);
     }
 
     await task.save();
 
+    await AuditLog.create({
+      organization: orgId,
+      actor: req.user._id,
+      action: 'task.updated',
+      targetType: 'Task',
+      targetId: task._id.toString(),
+      details: { title: task.title, status: task.status, priority: task.priority },
+      ipAddress: req.ip
+    });
+
+    const updatedTask = await Task.findById(task._id)
+      .populate('assignedTo', 'name email avatar')
+      .populate('collaborators', 'name email avatar')
+      .populate('user', 'name email avatar')
+      .populate('workspace', 'name isDefault');
+
     res.status(200).json({
       success: true,
       message: 'Task updated successfully',
-      task
+      task: updatedTask
     });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Toggle task status (pending <-> completed)
+// @desc    Toggle task completion status
 // @route   PATCH /api/tasks/:id/toggle
 // @access  Private
 export const toggleTaskStatus = async (req, res, next) => {
   try {
+    const orgId = req.organization._id;
     const task = await Task.findOne({
       _id: req.params.id,
-      organization: req.organization._id,
+      organization: orgId,
       isDeleted: false
     });
 
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: 'Task not found or access denied'
+        message: 'Task not found or has been deleted'
       });
     }
 
     task.status = task.status === 'completed' ? 'pending' : 'completed';
     await task.save();
+
+    await AuditLog.create({
+      organization: orgId,
+      actor: req.user._id,
+      action: 'task.toggled',
+      targetType: 'Task',
+      targetId: task._id.toString(),
+      details: { newStatus: task.status },
+      ipAddress: req.ip
+    });
 
     res.status(200).json({
       success: true,
@@ -419,21 +684,22 @@ export const toggleTaskStatus = async (req, res, next) => {
   }
 };
 
-// @desc    Soft-delete a task
+// @desc    Soft delete task
 // @route   DELETE /api/tasks/:id
 // @access  Private
 export const deleteTask = async (req, res, next) => {
   try {
+    const orgId = req.organization._id;
     const task = await Task.findOne({
       _id: req.params.id,
-      organization: req.organization._id,
+      organization: orgId,
       isDeleted: false
     });
 
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: 'Task not found or already deleted'
+        message: 'Task not found or has already been deleted'
       });
     }
 
@@ -442,7 +708,7 @@ export const deleteTask = async (req, res, next) => {
     await task.save();
 
     await AuditLog.create({
-      organization: req.organization._id,
+      organization: orgId,
       actor: req.user._id,
       action: 'task.deleted',
       targetType: 'Task',
@@ -453,7 +719,112 @@ export const deleteTask = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: 'Task moved to trash successfully'
+      message: 'Task deleted successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Add a collaborative comment to a task
+// @route   POST /api/tasks/:id/comments
+// @access  Private
+export const addTaskComment = async (req, res, next) => {
+  try {
+    const orgId = req.organization._id;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ success: false, message: 'Comment content cannot be empty' });
+    }
+
+    const task = await Task.findOne({
+      _id: req.params.id,
+      organization: orgId,
+      isDeleted: false
+    });
+
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Task not found or access denied' });
+    }
+
+    const newComment = {
+      user: req.user._id,
+      content: content.trim(),
+      createdAt: new Date()
+    };
+
+    task.comments.push(newComment);
+    await task.save();
+
+    await AuditLog.create({
+      organization: orgId,
+      actor: req.user._id,
+      action: 'task.comment_added',
+      targetType: 'Task',
+      targetId: task._id.toString(),
+      details: { commentLength: content.trim().length },
+      ipAddress: req.ip
+    });
+
+    const populatedTask = await Task.findById(task._id).populate('comments.user', 'name email avatar');
+
+    res.status(201).json({
+      success: true,
+      message: 'Comment added successfully',
+      comments: populatedTask.comments
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update task collaborators
+// @route   POST /api/tasks/:id/collaborators
+// @access  Private
+export const updateCollaborators = async (req, res, next) => {
+  try {
+    const orgId = req.organization._id;
+    const { collaboratorIds } = req.body;
+
+    if (!Array.isArray(collaboratorIds)) {
+      return res.status(400).json({ success: false, message: 'collaboratorIds must be an array' });
+    }
+
+    const task = await Task.findOne({
+      _id: req.params.id,
+      organization: orgId,
+      isDeleted: false
+    });
+
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Task not found or access denied' });
+    }
+
+    // Validate that all collaborator users are members of the organization
+    const validMemberships = await Membership.find({
+      organization: orgId,
+      user: { $in: collaboratorIds }
+    });
+    task.collaborators = validMemberships.map((m) => m.user);
+    await task.save();
+
+    await AuditLog.create({
+      organization: orgId,
+      actor: req.user._id,
+      action: 'task.collaborators_updated',
+      targetType: 'Task',
+      targetId: task._id.toString(),
+      details: { count: task.collaborators.length },
+      ipAddress: req.ip
+    });
+
+    const populatedTask = await Task.findById(task._id).populate('collaborators', 'name email avatar');
+
+    res.status(200).json({
+      success: true,
+      message: 'Collaborators updated successfully',
+      collaborators: populatedTask.collaborators
     });
   } catch (error) {
     next(error);

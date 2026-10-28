@@ -8,6 +8,8 @@ import authRoutes from './routes/authRoutes.js';
 import taskRoutes from './routes/taskRoutes.js';
 import orgRoutes from './routes/orgRoutes.js';
 import billingRoutes from './routes/billingRoutes.js';
+import workspaceRoutes from './routes/workspaceRoutes.js';
+import teamRoutes from './routes/teamRoutes.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 
 // Validate environment variables on startup
@@ -73,6 +75,8 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/organizations', orgRoutes);
+app.use('/api/workspaces', workspaceRoutes);
+app.use('/api/teams', teamRoutes);
 app.use('/api/billing', billingRoutes);
 
 // Error Handling Middleware

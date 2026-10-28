@@ -16,7 +16,7 @@ const membershipSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['owner', 'admin', 'member', 'guest'],
+      enum: ['owner', 'admin', 'manager', 'member', 'guest', 'billing_admin'],
       default: 'member',
       required: true
     },

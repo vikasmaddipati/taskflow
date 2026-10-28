@@ -9,6 +9,8 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem('tm_token'));
   const [currentOrg, setCurrentOrg] = useState(null);
   const [organizations, setOrganizations] = useState([]);
+  const [currentWorkspace, setCurrentWorkspace] = useState(null);
+  const [workspaces, setWorkspaces] = useState([]);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
   const { setTheme } = useTheme();
@@ -27,10 +29,13 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('tm_refresh_token');
       localStorage.removeItem('tm_user');
       localStorage.removeItem('tm_org_id');
+      localStorage.removeItem('tm_workspace_id');
       setToken(null);
       setUser(null);
       setCurrentOrg(null);
       setOrganizations([]);
+      setCurrentWorkspace(null);
+      setWorkspaces([]);
       setAuthError(null);
     }
   }, []);
@@ -51,6 +56,31 @@ export const AuthProvider = ({ children }) => {
     [setTheme]
   );
 
+  // Fetch workspaces for current organization
+  const fetchWorkspaces = useCallback(async (orgId) => {
+    try {
+      const activeOrgId = orgId || localStorage.getItem('tm_org_id');
+      if (!activeOrgId) return;
+      const res = await api.get('/workspaces', {
+        headers: { 'x-organization-id': activeOrgId }
+      });
+      if (res.data.success && res.data.workspaces) {
+        setWorkspaces(res.data.workspaces);
+        const storedWsId = localStorage.getItem('tm_workspace_id');
+        const active =
+          res.data.workspaces.find((w) => w._id === storedWsId) ||
+          res.data.workspaces.find((w) => w.isDefault) ||
+          res.data.workspaces[0];
+        if (active) {
+          setCurrentWorkspace(active);
+          localStorage.setItem('tm_workspace_id', active._id);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load workspaces:', err?.message);
+    }
+  }, []);
+
   // Fetch user organizations
   const fetchOrganizations = useCallback(async () => {
     try {
@@ -62,12 +92,13 @@ export const AuthProvider = ({ children }) => {
         if (active) {
           setCurrentOrg(active);
           localStorage.setItem('tm_org_id', active._id);
+          await fetchWorkspaces(active._id);
         }
       }
     } catch (err) {
       console.warn('Could not load organizations:', err?.message);
     }
-  }, []);
+  }, [fetchWorkspaces]);
 
   // Load user profile on mount
   useEffect(() => {
@@ -240,7 +271,17 @@ export const AuthProvider = ({ children }) => {
   const switchOrganization = (org) => {
     setCurrentOrg(org);
     localStorage.setItem('tm_org_id', org._id);
+    localStorage.removeItem('tm_workspace_id');
+    setCurrentWorkspace(null);
+    fetchWorkspaces(org._id);
     window.dispatchEvent(new Event('org:changed'));
+  };
+
+  // Switch Active Workspace
+  const switchWorkspace = (ws) => {
+    setCurrentWorkspace(ws);
+    localStorage.setItem('tm_workspace_id', ws._id);
+    window.dispatchEvent(new Event('workspace:changed'));
   };
 
   // Update Profile
@@ -275,6 +316,10 @@ export const AuthProvider = ({ children }) => {
         organizations,
         switchOrganization,
         fetchOrganizations,
+        currentWorkspace,
+        workspaces,
+        switchWorkspace,
+        fetchWorkspaces,
         login,
         register,
         loginWithGoogle,

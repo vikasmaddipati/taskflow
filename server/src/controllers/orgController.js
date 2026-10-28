@@ -5,7 +5,15 @@ import Workspace from '../models/Workspace.js';
 import Invitation from '../models/Invitation.js';
 import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
+import Task from '../models/Task.js';
+import Team from '../models/Team.js';
 import { getOrgPlan } from '../config/plans.js';
+import { ROLES, ROLE_HIERARCHY } from '../config/permissions.js';
+
+// Helper to hash secrets/tokens with SHA-256
+const hashSecret = (value) => {
+  return crypto.createHash('sha256').update(String(value).trim()).digest('hex');
+};
 
 // @desc    List organizations user belongs to
 // @route   GET /api/organizations
@@ -87,7 +95,7 @@ export const createOrganization = async (req, res, next) => {
     await Membership.create({
       organization: organization._id,
       user: req.user._id,
-      role: 'owner'
+      role: ROLES.OWNER
     });
 
     await Workspace.create({
@@ -112,7 +120,7 @@ export const createOrganization = async (req, res, next) => {
       message: 'Organization created successfully',
       organization: {
         ...organization.toJSON(),
-        role: 'owner'
+        role: ROLES.OWNER
       }
     });
   } catch (error) {
@@ -151,29 +159,164 @@ export const getOrganizationById = async (req, res, next) => {
   }
 };
 
+// @desc    Update organization settings
+// @route   PATCH /api/organizations/:id
+// @access  Private (Owner / Admin)
+export const updateOrganization = async (req, res, next) => {
+  try {
+    const org = req.organization;
+    const { name, logo, plan } = req.body;
+
+    if (name && name.trim()) {
+      org.name = name.trim();
+    }
+    if (logo !== undefined) {
+      org.logo = logo;
+    }
+    if (plan && ['free', 'pro', 'business'].includes(plan)) {
+      org.plan = plan;
+    }
+
+    await org.save();
+
+    await AuditLog.create({
+      organization: org._id,
+      actor: req.user._id,
+      action: 'organization.updated',
+      targetType: 'Organization',
+      targetId: org._id.toString(),
+      details: { name: org.name },
+      ipAddress: req.ip
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Organization settings updated',
+      organization: org
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Transfer ownership of organization to another member
+// @route   POST /api/organizations/:id/transfer-ownership
+// @access  Private (Owner only)
+export const transferOwnership = async (req, res, next) => {
+  try {
+    const { targetUserId } = req.body;
+    const org = req.organization;
+
+    if (req.membership.role !== ROLES.OWNER) {
+      return res.status(403).json({
+        success: false,
+        code: 'OWNER_ONLY',
+        message: 'Only the current organization owner can transfer ownership'
+      });
+    }
+
+    if (!targetUserId || targetUserId === req.user._id.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid target member ID different from the current owner is required'
+      });
+    }
+
+    const targetMembership = await Membership.findOne({
+      organization: org._id,
+      user: targetUserId
+    }).populate('user');
+
+    if (!targetMembership) {
+      return res.status(404).json({
+        success: false,
+        message: 'Target user is not a member of this organization'
+      });
+    }
+
+    // 1. Promote target member to Owner
+    targetMembership.role = ROLES.OWNER;
+    await targetMembership.save();
+
+    // 2. Demote current caller to Admin
+    req.membership.role = ROLES.ADMIN;
+    await req.membership.save();
+
+    // 3. Update organization owner field
+    org.owner = targetUserId;
+    await org.save();
+
+    await AuditLog.create({
+      organization: org._id,
+      actor: req.user._id,
+      action: 'organization.ownership_transferred',
+      targetType: 'User',
+      targetId: targetUserId,
+      details: {
+        newOwnerEmail: targetMembership.user?.email,
+        previousOwnerId: req.user._id
+      },
+      ipAddress: req.ip
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Ownership successfully transferred to ${targetMembership.user?.name || 'new owner'}`,
+      newOwnerId: targetUserId
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Delete or deactivate an organization
+// @route   DELETE /api/organizations/:id
+// @access  Private (Owner only)
+export const deleteOrganization = async (req, res, next) => {
+  try {
+    const org = req.organization;
+
+    if (req.membership.role !== ROLES.OWNER) {
+      return res.status(403).json({
+        success: false,
+        code: 'OWNER_ONLY',
+        message: 'Only the organization owner can delete the organization'
+      });
+    }
+
+    // Cascade delete tenant-owned records
+    await Promise.all([
+      Task.deleteMany({ organization: org._id }),
+      Workspace.deleteMany({ organization: org._id }),
+      Team.deleteMany({ organization: org._id }),
+      Invitation.deleteMany({ organization: org._id }),
+      Membership.deleteMany({ organization: org._id }),
+      Organization.findByIdAndDelete(org._id)
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: 'Organization and associated resources deleted successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    List members of an organization
 // @route   GET /api/organizations/:id/members
 // @access  Private
 export const getOrganizationMembers = async (req, res, next) => {
   try {
-    const membership = await Membership.findOne({
-      organization: req.params.id,
-      user: req.user._id
-    });
-
-    if (!membership) {
-      return res.status(403).json({ success: false, message: 'Access denied to organization members' });
-    }
-
-    const members = await Membership.find({ organization: req.params.id })
+    const members = await Membership.find({ organization: req.organization._id })
       .populate('user', 'name email avatar')
       .sort({ joinedAt: 1 });
 
     const invitations = await Invitation.find({
-      organization: req.params.id,
+      organization: req.organization._id,
       status: 'pending',
       expiresAt: { $gt: new Date() }
-    }).select('-token');
+    }).select('-token -tokenHash');
 
     res.status(200).json({
       success: true,
@@ -193,11 +336,12 @@ export const getOrganizationMembers = async (req, res, next) => {
 
 // @desc    Invite a new member via email
 // @route   POST /api/organizations/:id/invitations
-// @access  Private (Owner / Admin)
+// @access  Private (Owner / Admin / Manager)
 export const inviteMember = async (req, res, next) => {
   try {
-    const { email, role = 'member' } = req.body;
-    const orgId = req.params.id;
+    const { email, role = 'member', workspaceId } = req.body;
+    const org = req.organization;
+    const callerRole = req.membership.role;
 
     if (!email || !email.includes('@')) {
       return res.status(400).json({ success: false, message: 'Valid email address is required' });
@@ -205,21 +349,23 @@ export const inviteMember = async (req, res, next) => {
 
     const cleanEmail = email.toLowerCase().trim();
 
-    // Verify caller is admin or owner
-    const callerMembership = await Membership.findOne({
-      organization: orgId,
-      user: req.user._id
-    }).populate('organization');
-
-    if (!callerMembership || !['owner', 'admin'].includes(callerMembership.role)) {
-      return res.status(403).json({ success: false, message: 'Only owners and admins can invite members' });
+    // Privilege escalation check: cannot invite with role higher or equal to caller's rank (unless owner)
+    if (callerRole !== ROLES.OWNER) {
+      const callerLevel = ROLE_HIERARCHY[callerRole] || 0;
+      const targetLevel = ROLE_HIERARCHY[role] || 0;
+      if (targetLevel >= callerLevel) {
+        return res.status(403).json({
+          success: false,
+          code: 'PRIVILEGE_ESCALATION_BLOCKED',
+          message: `You cannot invite a member with role '${role}', which is equal or higher than your role '${callerRole}'`
+        });
+      }
     }
 
-    const org = callerMembership.organization;
     const plan = getOrgPlan(org);
 
     // Enforce member quota
-    const currentMemberCount = await Membership.countDocuments({ organization: orgId });
+    const currentMemberCount = await Membership.countDocuments({ organization: org._id });
     if (currentMemberCount >= plan.limits.maxMembers) {
       return res.status(403).json({
         success: false,
@@ -231,7 +377,7 @@ export const inviteMember = async (req, res, next) => {
     // Check if target user is already a member
     const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
-      const alreadyMember = await Membership.findOne({ organization: orgId, user: existingUser._id });
+      const alreadyMember = await Membership.findOne({ organization: org._id, user: existingUser._id });
       if (alreadyMember) {
         return res.status(400).json({ success: false, message: 'This user is already a member of the organization' });
       }
@@ -239,24 +385,30 @@ export const inviteMember = async (req, res, next) => {
 
     // Revoke any existing pending invite for this email
     await Invitation.updateMany(
-      { organization: orgId, email: cleanEmail, status: 'pending' },
+      { organization: org._id, email: cleanEmail, status: 'pending' },
       { $set: { status: 'revoked' } }
     );
 
-    const token = crypto.randomBytes(32).toString('hex');
+    // Generate cryptographically secure random token and its SHA-256 hash
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashSecret(rawToken);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     const invitation = await Invitation.create({
-      organization: orgId,
+      organization: org._id,
+      workspace: workspaceId || null,
       email: cleanEmail,
-      role: ['admin', 'member', 'guest'].includes(role) ? role : 'member',
-      token,
+      role: [ROLES.ADMIN, ROLES.MANAGER, ROLES.MEMBER, ROLES.GUEST, ROLES.BILLING_ADMIN].includes(role)
+        ? role
+        : ROLES.MEMBER,
+      token: rawToken,
+      tokenHash,
       invitedBy: req.user._id,
       expiresAt
     });
 
     await AuditLog.create({
-      organization: orgId,
+      organization: org._id,
       actor: req.user._id,
       action: 'member.invited',
       targetType: 'Invitation',
@@ -273,7 +425,8 @@ export const inviteMember = async (req, res, next) => {
         email: invitation.email,
         role: invitation.role,
         expiresAt: invitation.expiresAt,
-        inviteUrl: `${req.protocol}://${req.get('host')}/invite/${token}`
+        token: rawToken,
+        inviteUrl: `${req.protocol}://${req.get('host')}/invite/${rawToken}`
       }
     });
   } catch (error) {
@@ -287,9 +440,11 @@ export const inviteMember = async (req, res, next) => {
 export const acceptInvitation = async (req, res, next) => {
   try {
     const { token } = req.params;
+    const hashed = hashSecret(token);
 
+    // Match either hashed token or raw token
     const invitation = await Invitation.findOne({
-      token,
+      $or: [{ tokenHash: hashed }, { token }],
       status: 'pending',
       expiresAt: { $gt: new Date() }
     }).populate('organization');
@@ -338,21 +493,143 @@ export const acceptInvitation = async (req, res, next) => {
   }
 };
 
+// @desc    Revoke a pending invitation
+// @route   DELETE /api/organizations/:id/invitations/:invitationId
+// @access  Private (Owner / Admin / Manager)
+export const revokeInvitation = async (req, res, next) => {
+  try {
+    const { invitationId } = req.params;
+    const org = req.organization;
+
+    const invitation = await Invitation.findOne({
+      _id: invitationId,
+      organization: org._id
+    });
+
+    if (!invitation) {
+      return res.status(404).json({ success: false, message: 'Invitation not found' });
+    }
+
+    invitation.status = 'revoked';
+    await invitation.save();
+
+    await AuditLog.create({
+      organization: org._id,
+      actor: req.user._id,
+      action: 'invitation.revoked',
+      targetType: 'Invitation',
+      targetId: invitationId,
+      details: { email: invitation.email },
+      ipAddress: req.ip
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Invitation revoked successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update a member's role
+// @route   PATCH /api/organizations/:id/members/:userId
+// @access  Private (Owner / Admin)
+export const updateMemberRole = async (req, res, next) => {
+  try {
+    const { id: orgId, userId } = req.params;
+    const { role: newRole } = req.body;
+    const callerMembership = req.membership;
+
+    if (!newRole || !Object.values(ROLES).includes(newRole)) {
+      return res.status(400).json({ success: false, message: 'Valid role is required' });
+    }
+
+    const targetMembership = await Membership.findOne({
+      organization: orgId,
+      user: userId
+    }).populate('user');
+
+    if (!targetMembership) {
+      return res.status(404).json({ success: false, message: 'Member not found in this organization' });
+    }
+
+    // Final Owner Protection: Owner role cannot be changed via role update
+    if (targetMembership.role === ROLES.OWNER) {
+      return res.status(400).json({
+        success: false,
+        code: 'FINAL_OWNER_PROTECTION',
+        message: 'Cannot demote the organization owner. Use transfer ownership instead.'
+      });
+    }
+
+    // Cannot promote someone to Owner via role update
+    if (newRole === ROLES.OWNER) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot assign owner role directly. Use transfer ownership instead.'
+      });
+    }
+
+    // Privilege Escalation Defense:
+    // Non-owners cannot modify roles of members with equal or higher rank, nor assign a role >= caller's rank
+    if (callerMembership.role !== ROLES.OWNER) {
+      const callerLevel = ROLE_HIERARCHY[callerMembership.role] || 0;
+      const targetCurrentLevel = ROLE_HIERARCHY[targetMembership.role] || 0;
+      const newRoleLevel = ROLE_HIERARCHY[newRole] || 0;
+
+      if (targetCurrentLevel >= callerLevel) {
+        return res.status(403).json({
+          success: false,
+          code: 'PRIVILEGE_ESCALATION_BLOCKED',
+          message: 'You cannot modify the role of a member with equal or higher rank'
+        });
+      }
+
+      if (newRoleLevel >= callerLevel) {
+        return res.status(403).json({
+          success: false,
+          code: 'PRIVILEGE_ESCALATION_BLOCKED',
+          message: 'You cannot grant a role equal or higher than your own rank'
+        });
+      }
+    }
+
+    const oldRole = targetMembership.role;
+    targetMembership.role = newRole;
+    await targetMembership.save();
+
+    await AuditLog.create({
+      organization: orgId,
+      actor: req.user._id,
+      action: 'member.role_updated',
+      targetType: 'User',
+      targetId: userId,
+      details: { oldRole, newRole },
+      ipAddress: req.ip
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Member role updated to ${newRole}`,
+      member: {
+        id: targetMembership._id,
+        user: targetMembership.user,
+        role: targetMembership.role
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Remove member from organization
 // @route   DELETE /api/organizations/:id/members/:userId
 // @access  Private (Owner / Admin)
 export const removeMember = async (req, res, next) => {
   try {
     const { id: orgId, userId } = req.params;
-
-    const callerMembership = await Membership.findOne({
-      organization: orgId,
-      user: req.user._id
-    });
-
-    if (!callerMembership || !['owner', 'admin'].includes(callerMembership.role)) {
-      return res.status(403).json({ success: false, message: 'Insufficient permission to remove members' });
-    }
+    const callerMembership = req.membership;
 
     const targetMembership = await Membership.findOne({
       organization: orgId,
@@ -363,12 +640,25 @@ export const removeMember = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Member not found in this organization' });
     }
 
-    if (targetMembership.role === 'owner') {
-      return res.status(400).json({ success: false, message: 'Cannot remove the organization owner' });
+    // Final Owner Protection: Cannot remove the owner
+    if (targetMembership.role === ROLES.OWNER) {
+      return res.status(400).json({
+        success: false,
+        code: 'FINAL_OWNER_PROTECTION',
+        message: 'Cannot remove the organization owner'
+      });
     }
 
-    if (callerMembership.role === 'admin' && targetMembership.role === 'admin') {
-      return res.status(403).json({ success: false, message: 'Admins cannot remove other admins' });
+    // Non-owner rank check
+    if (callerMembership.role !== ROLES.OWNER) {
+      const callerLevel = ROLE_HIERARCHY[callerMembership.role] || 0;
+      const targetLevel = ROLE_HIERARCHY[targetMembership.role] || 0;
+      if (targetLevel >= callerLevel) {
+        return res.status(403).json({
+          success: false,
+          message: 'You cannot remove a member with equal or higher rank'
+        });
+      }
     }
 
     await Membership.findByIdAndDelete(targetMembership._id);
@@ -385,6 +675,81 @@ export const removeMember = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: 'Member removed successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Voluntarily leave organization
+// @route   POST /api/organizations/:id/leave
+// @access  Private
+export const leaveOrganization = async (req, res, next) => {
+  try {
+    const org = req.organization;
+    const membership = req.membership;
+
+    // Final Owner Protection: Owner cannot leave without transferring ownership
+    if (membership.role === ROLES.OWNER) {
+      return res.status(400).json({
+        success: false,
+        code: 'FINAL_OWNER_CANNOT_LEAVE',
+        message: 'The organization owner cannot leave without transferring ownership first'
+      });
+    }
+
+    await Membership.findByIdAndDelete(membership._id);
+
+    await AuditLog.create({
+      organization: org._id,
+      actor: req.user._id,
+      action: 'member.left',
+      targetType: 'User',
+      targetId: req.user._id.toString(),
+      ipAddress: req.ip
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `You have left ${org.name}`
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get organization audit logs
+// @route   GET /api/organizations/:id/audit-logs
+// @access  Private (Owner / Admin / Billing Admin)
+export const getAuditLogs = async (req, res, next) => {
+  try {
+    const orgId = req.organization._id;
+    const { page = 1, limit = 20 } = req.query;
+
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    const [total, logs] = await Promise.all([
+      AuditLog.countDocuments({ organization: orgId }),
+      AuditLog.find({ organization: orgId })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parsedLimit)
+        .populate('actor', 'name email avatar')
+    ]);
+
+    const totalPages = Math.ceil(total / parsedLimit);
+
+    res.status(200).json({
+      success: true,
+      count: logs.length,
+      total,
+      page: parsedPage,
+      limit: parsedLimit,
+      totalPages,
+      hasMore: parsedPage < totalPages,
+      logs
     });
   } catch (error) {
     next(error);

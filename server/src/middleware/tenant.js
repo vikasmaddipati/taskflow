@@ -75,6 +75,40 @@ export const resolveTenant = async (req, res, next) => {
     req.membership = membership;
     req.orgRole = membership ? membership.role : 'guest';
 
+    // Resolve active Workspace context within organization
+    const requestedWorkspaceId =
+      req.headers['x-workspace-id'] ||
+      req.query.workspaceId;
+
+    let workspace = null;
+    if (requestedWorkspaceId && requestedWorkspaceId.match(/^[0-9a-fA-F]{24}$/)) {
+      workspace = await Workspace.findOne({
+        _id: requestedWorkspaceId,
+        organization: organization._id,
+        isArchived: false
+      });
+    }
+
+    if (!workspace) {
+      // Fallback to default or first active workspace in this organization
+      workspace = await Workspace.findOne({
+        organization: organization._id,
+        isArchived: false
+      }).sort({ isDefault: -1, createdAt: 1 });
+    }
+
+    // If still no workspace exists in the organization, create default 'General'
+    if (!workspace) {
+      workspace = await Workspace.create({
+        organization: organization._id,
+        name: 'General',
+        isDefault: true,
+        createdBy: req.user._id
+      });
+    }
+
+    req.workspace = workspace;
+
     next();
   } catch (error) {
     next(error);

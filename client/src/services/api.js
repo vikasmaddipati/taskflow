@@ -64,6 +64,12 @@ api.interceptors.request.use(
       config.headers['x-organization-id'] = orgId;
     }
 
+    // Attach active workspace ID if set
+    const wsId = localStorage.getItem('tm_workspace_id');
+    if (wsId) {
+      config.headers['x-workspace-id'] = wsId;
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
