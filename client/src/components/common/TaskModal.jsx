@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, Tag, AlertCircle } from 'lucide-react';
+import { X, AlertCircle } from 'lucide-react';
 
 const CATEGORY_SUGGESTIONS = ['Work', 'Personal', 'Study', 'Urgent', 'Health', 'Project'];
 
@@ -18,7 +18,19 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
       setDescription(task.description || '');
       setPriority(task.priority || 'medium');
       setStatus(task.status || 'pending');
-      setDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '');
+
+      // Preserve date string without timezone skew
+      let dateVal = '';
+      if (task.dueDateString) {
+        dateVal = task.dueDateString;
+      } else if (task.dueDate) {
+        try {
+          dateVal = new Intl.DateTimeFormat('en-CA').format(new Date(task.dueDate));
+        } catch {
+          dateVal = '';
+        }
+      }
+      setDueDate(dateVal);
       setCategory(task.category || 'General');
     } else {
       setTitle('');
@@ -46,7 +58,8 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
       description: description.trim(),
       priority,
       status,
-      dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+      dueDate: dueDate || null,
+      dueDateString: dueDate || null,
       category: category.trim() || 'General'
     });
   };
@@ -149,7 +162,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
               </label>
               <div className="grid grid-cols-2 gap-1.5">
                 {[
-                  { value: 'pending', label: 'Pending' },
+                  { value: 'pending', label: 'In Progress' },
                   { value: 'completed', label: 'Completed' }
                 ].map((item) => (
                   <button
@@ -159,7 +172,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                     onClick={() => setStatus(item.value)}
                     className={`py-2 px-2 text-xs font-medium rounded-xl border text-center transition-all ${
                       status === item.value
-                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-bold ring-2 ring-indigo-500/50 shadow-xs'
+                        ? 'border-indigo-500 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 font-bold ring-2 ring-indigo-500/50 shadow-xs'
                         : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700'
                     }`}
                   >
@@ -170,35 +183,25 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
             </div>
           </div>
 
-          {/* Due Date & Category */}
+          {/* Due Date & Category Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Due Date */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                Due Date
+                Due Date <span className="text-slate-400 text-xs font-normal">(User Local Date)</span>
               </label>
-              <div className="relative flex items-center">
+              <div className="relative">
                 <input
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
                   disabled={isSubmitting}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-850 transition-colors"
                 />
-                {dueDate && (
-                  <button
-                    type="button"
-                    onClick={() => setDueDate('')}
-                    className="absolute right-2.5 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
-                    title="Clear date"
-                  >
-                    Clear
-                  </button>
-                )}
               </div>
             </div>
 
-            {/* Category / Tag */}
+            {/* Category */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
                 Category
@@ -207,60 +210,40 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                 type="text"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                placeholder="e.g., Work, Personal"
+                placeholder="e.g. Work, Personal"
+                list="category-suggestions"
                 disabled={isSubmitting}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-850 transition-colors"
               />
-            </div>
-          </div>
-
-          {/* Quick Category Suggestions */}
-          <div>
-            <div className="flex items-center gap-1.5 mb-1 text-[11px] text-slate-400 dark:text-slate-500">
-              <Tag className="w-3 h-3" />
-              <span>Suggested tags:</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {CATEGORY_SUGGESTIONS.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={() => setCategory(tag)}
-                  className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
-                    category.toLowerCase() === tag.toLowerCase()
-                      ? 'bg-indigo-600 text-white font-medium'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {tag}
-                </button>
-              ))}
+              <datalist id="category-suggestions">
+                {CATEGORY_SUGGESTIONS.map((cat) => (
+                  <option key={cat} value={cat} />
+                ))}
+              </datalist>
             </div>
           </div>
 
           {/* Footer Actions */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-2.5 rounded-xl text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-60 transition-all shadow-xs flex items-center gap-2"
+              className="inline-flex items-center justify-center px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 rounded-xl shadow-md shadow-indigo-600/20 transition-all active:scale-95"
             >
               {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Saving...</span>
-                </>
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : task ? (
+                'Save Changes'
               ) : (
-                task ? 'Update Task' : 'Create Task'
+                'Create Task'
               )}
             </button>
           </div>

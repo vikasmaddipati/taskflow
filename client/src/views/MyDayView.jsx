@@ -35,11 +35,16 @@ export const MyDayView = ({
   }, [refreshTrigger]);
 
   const now = new Date();
+  const todayStr = new Intl.DateTimeFormat('en-CA').format(now);
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
+  // Correct calendar-day comparison without timezone corruption
   const overdueTasks = tasks.filter(
-    (t) => t.status === 'pending' && t.dueDate && new Date(t.dueDate) < startOfToday
+    (t) =>
+      t.status === 'pending' &&
+      (t.dueDateString ? t.dueDateString < todayStr : t.dueDate && new Date(t.dueDate) < startOfToday)
   );
+
   const todayTasks = tasks.filter(
     (t) => !overdueTasks.some((ot) => ot._id === t._id)
   );
@@ -60,25 +65,25 @@ export const MyDayView = ({
             <span>Daily Focus</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1">
-            {formattedDate}
+            My Day — {formattedDate}
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Tasks scheduled for today and overdue items requiring your immediate attention.
+            Tasks scheduled for today and urgent action items requiring your immediate attention.
           </p>
         </div>
 
         <button
-          onClick={() => onOpenCreateModal({ dueDate: new Date().toISOString().split('T')[0] })}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs sm:text-sm shadow-xs transition-all self-start sm:self-auto"
+          onClick={() => onOpenCreateModal({ dueDate: todayStr })}
+          className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-all active:scale-95 self-start sm:self-auto shrink-0"
         >
-          <Plus className="w-4 h-4 stroke-[3]" />
+          <Plus className="w-4 h-4 stroke-[2.5]" />
           Add to My Day
         </button>
       </div>
 
       {loading ? (
         <div className="flex flex-col items-center justify-center p-12">
-          <div className="w-8 h-8 border-3 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+          <div className="w-8 h-8 border-3 border-amber-600/30 border-t-amber-600 rounded-full animate-spin" />
           <span className="mt-3 text-xs text-slate-500">Loading daily tasks...</span>
         </div>
       ) : error ? (
@@ -93,20 +98,21 @@ export const MyDayView = ({
         </div>
       ) : tasks.length === 0 ? (
         <EmptyState
-          icon={Sun}
-          title="All clear for today!"
-          description="You don't have any tasks scheduled for today or lingering overdue tasks."
-          actionText="Add a Task for Today"
-          onAction={() => onOpenCreateModal({ dueDate: new Date().toISOString().split('T')[0] })}
+          title="No tasks scheduled for today"
+          description="Enjoy a clear schedule, or add tasks to your daily focus list to get started."
+          actionText="Add Task for Today"
+          onAction={() => onOpenCreateModal({ dueDate: todayStr })}
         />
       ) : (
         <div className="space-y-6">
           {/* Overdue Section */}
           {overdueTasks.length > 0 && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
-                <AlertTriangle className="w-4 h-4" />
-                <span>Overdue Tasks ({overdueTasks.length})</span>
+              <div className="flex items-center gap-2 px-1">
+                <AlertTriangle className="w-4 h-4 text-rose-500" />
+                <h3 className="text-sm font-bold text-rose-600 dark:text-rose-400">
+                  Overdue ({overdueTasks.length})
+                </h3>
               </div>
               <div className="space-y-2.5">
                 {overdueTasks.map((task) => (
@@ -122,13 +128,21 @@ export const MyDayView = ({
             </div>
           )}
 
-          {/* Today Tasks Section */}
-          {todayTasks.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                <Calendar className="w-4 h-4 text-indigo-500" />
-                <span>Due Today ({todayTasks.length})</span>
+          {/* Today's Tasks Section */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-amber-500" />
+                <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  Today's Agenda ({todayTasks.length})
+                </h3>
               </div>
+            </div>
+            {todayTasks.length === 0 ? (
+              <div className="p-6 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-center text-xs text-slate-400">
+                No active tasks pending for today.
+              </div>
+            ) : (
               <div className="space-y-2.5">
                 {todayTasks.map((task) => (
                   <TaskItem
@@ -140,8 +154,8 @@ export const MyDayView = ({
                   />
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>
