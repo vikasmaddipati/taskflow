@@ -3,6 +3,9 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Otp from '../models/Otp.js';
 import Session from '../models/Session.js';
+import Organization from '../models/Organization.js';
+import Membership from '../models/Membership.js';
+import Workspace from '../models/Workspace.js';
 import { sendOtpEmail } from '../services/emailService.js';
 import { verifyGoogleIdToken } from '../services/googleAuthService.js';
 import { config } from '../config/env.js';
@@ -52,6 +55,37 @@ export const createAuthSession = async (user, req) => {
   };
 };
 
+/**
+ * Ensures user has at least one active organization and workspace.
+ */
+export const ensureUserOrganization = async (user) => {
+  let membership = await Membership.findOne({ user: user._id }).populate('organization');
+  if (membership && membership.organization) {
+    return membership.organization;
+  }
+  const slug = `org-${user._id.toString().slice(-6)}-${Date.now().toString().slice(-4)}`;
+  const organization = await Organization.create({
+    name: `${user.name}'s Workspace`,
+    slug,
+    owner: user._id,
+    isPersonal: true,
+    plan: 'free'
+  });
+  await Membership.create({
+    organization: organization._id,
+    user: user._id,
+    role: 'owner'
+  });
+  await Workspace.create({
+    name: 'General',
+    organization: organization._id,
+    isDefault: true
+  });
+  user.currentOrganization = organization._id;
+  await user.save({ validateBeforeSave: false });
+  return organization;
+};
+
 // @desc    Register a new user with email & password
 // @route   POST /api/auth/register
 // @access  Public
@@ -90,12 +124,16 @@ export const register = async (req, res, next) => {
       isEmailVerified: false
     });
 
-    const tokens = await createAuthSession(user, req);
+    const [tokens, organization] = await Promise.all([
+      createAuthSession(user, req),
+      ensureUserOrganization(user)
+    ]);
 
     res.status(201).json({
       success: true,
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
+      organization,
       user: {
         id: user._id,
         name: user.name,
@@ -103,7 +141,8 @@ export const register = async (req, res, next) => {
         theme: user.theme,
         avatar: user.avatar,
         authProviders: user.authProviders,
-        isEmailVerified: user.isEmailVerified
+        isEmailVerified: user.isEmailVerified,
+        currentOrganization: organization._id
       }
     });
   } catch (error) {
@@ -150,12 +189,16 @@ export const login = async (req, res, next) => {
       });
     }
 
-    const tokens = await createAuthSession(user, req);
+    const [tokens, organization] = await Promise.all([
+      createAuthSession(user, req),
+      ensureUserOrganization(user)
+    ]);
 
     res.status(200).json({
       success: true,
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
+      organization,
       user: {
         id: user._id,
         name: user.name,
@@ -163,7 +206,8 @@ export const login = async (req, res, next) => {
         theme: user.theme,
         avatar: user.avatar,
         authProviders: user.authProviders,
-        isEmailVerified: user.isEmailVerified
+        isEmailVerified: user.isEmailVerified,
+        currentOrganization: organization._id
       }
     });
   } catch (error) {
@@ -724,6 +768,11 @@ export const refreshToken = async (req, res, next) => {
           { user: session.user, isRevoked: false },
           { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: 'TOKEN_REUSE_DETECTED' } }
         );
+        return res.status(403).json({
+          success: false,
+          code: 'TOKEN_REUSE_DETECTED',
+          message: 'Security breach detected: refresh token was already used. All sessions have been revoked.'
+        });
       }
       return res.status(401).json({
         success: false,
@@ -821,13 +870,14 @@ export const logout = async (req, res, next) => {
 // @access  Private
 export const logoutAll = async (req, res, next) => {
   try {
-    await Session.updateMany(
+    const result = await Session.updateMany(
       { user: req.user._id, isRevoked: false },
       { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: 'LOGOUT_ALL' } }
     );
 
     res.status(200).json({
       success: true,
+      sessionsRevoked: result.modifiedCount,
       message: 'All active sessions have been revoked. Please log in again.'
     });
   } catch (error) {

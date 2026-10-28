@@ -127,6 +127,13 @@ export const getTasks = async (req, res, next) => {
       limit: parsedLimit,
       totalPages,
       hasMore: parsedPage < totalPages,
+      pagination: {
+        page: parsedPage,
+        limit: parsedLimit,
+        totalPages,
+        totalTasks: total,
+        hasMore: parsedPage < totalPages
+      },
       categories: categories.filter(Boolean),
       tasks
     });

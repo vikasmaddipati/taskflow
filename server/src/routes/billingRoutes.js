@@ -13,11 +13,13 @@ const router = express.Router();
 // Stripe Webhook needs raw body before JSON parsing
 router.post('/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
 
+// Public plans endpoint
+router.get('/plans', getBillingPlans);
+
 // Protected routes require authentication & active organization resolution
 router.use(protect);
 router.use(resolveTenant);
 
-router.get('/plans', getBillingPlans);
 router.post('/checkout', createCheckoutSession);
 router.post('/portal', createCustomerPortalSession);
 

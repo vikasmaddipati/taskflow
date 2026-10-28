@@ -34,6 +34,33 @@ export const getUserOrganizations = async (req, res, next) => {
   }
 };
 
+// @desc    Get current active organization details
+// @route   GET /api/organizations/current
+// @access  Private
+export const getCurrentOrganization = async (req, res, next) => {
+  try {
+    if (!req.organization) {
+      return res.status(404).json({ success: false, message: 'No active organization found' });
+    }
+
+    const membersCount = await Membership.countDocuments({ organization: req.organization._id });
+    const plan = getOrgPlan(req.organization);
+
+    res.status(200).json({
+      success: true,
+      userRole: req.membership?.role || 'member',
+      organization: {
+        ...req.organization.toJSON(),
+        role: req.membership?.role || 'member',
+        membersCount,
+        planConfig: plan
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Create a new organization
 // @route   POST /api/organizations
 // @access  Private

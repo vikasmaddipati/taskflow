@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getUserOrganizations,
   createOrganization,
+  getCurrentOrganization,
   getOrganizationById,
   getOrganizationMembers,
   inviteMember,
@@ -9,6 +10,7 @@ import {
   removeMember
 } from '../controllers/orgController.js';
 import { protect } from '../middleware/auth.js';
+import { resolveTenant } from '../middleware/tenant.js';
 
 const router = express.Router();
 
@@ -17,6 +19,8 @@ router.use(protect);
 router.route('/')
   .get(getUserOrganizations)
   .post(createOrganization);
+
+router.get('/current', resolveTenant, getCurrentOrganization);
 
 router.post('/invitations/:token/accept', acceptInvitation);
 

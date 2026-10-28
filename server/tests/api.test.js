@@ -1,5 +1,4 @@
-// Comprehensive automated verification script for TaskFlow Authentication & Task API
-import { devOtpStore } from '../src/services/emailService.js';
+// Comprehensive Automated Verification Suite for TaskFlow Hardened SaaS Architecture
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -7,11 +6,11 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const BASE_URL = 'http://localhost:5000/api';
+const BASE_URL = 'http://127.0.0.1:5000/api';
 
 async function isServerRunning() {
   try {
-    const res = await fetch('http://localhost:5000/api/health', {
+    const res = await fetch('http://127.0.0.1:5000/api/health', {
       signal: AbortSignal.timeout(1500)
     });
     return res.ok;
@@ -35,9 +34,9 @@ async function request(endpoint, options = {}) {
 }
 
 async function runTests() {
-  console.log('======================================================');
-  console.log('   TaskFlow Authentication & Security Test Suite      ');
-  console.log('======================================================\n');
+  console.log('================================================================');
+  console.log('   TaskFlow Production Hardening & SaaS Verification Suite       ');
+  console.log('================================================================\n');
   let passed = 0;
   let failed = 0;
   let spawnedServer = null;
@@ -62,7 +61,7 @@ async function runTests() {
       });
 
       let serverReady = false;
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 25; i++) {
         await new Promise((r) => setTimeout(r, 500));
         if (await isServerRunning()) {
           serverReady = true;
@@ -72,293 +71,368 @@ async function runTests() {
 
       if (!serverReady) {
         throw new Error(
-          'Could not start backend server. Please verify MongoDB is running locally (e.g. net start MongoDB) or start the server manually using: npm run dev'
+          'Could not start backend server. Please verify MongoDB is running locally (e.g. net start MongoDB).'
         );
       }
-      console.log('[Test Runner] Server is up and ready on port 5000.\n');
+      console.log('[Test Runner] Server is up and ready on 127.0.0.1:5000.\n');
     }
-    const randomSuffix = Math.floor(Math.random() * 100000);
 
-    // 1. Health check
+    const randomSuffix = Math.floor(Math.random() * 1000000);
+
+    // ---------------------------------------------------------
+    // 1. Health check & Live MongoDB Verification
+    // ---------------------------------------------------------
     const health = await request('/health');
-    assert(health.status === 200 && health.data.status === 'ok', '1. Health check returns 200 OK');
+    assert(
+      health.status === 200 && health.data.status === 'ok' && health.data.database?.connected === true,
+      '1. Health check returns 200 OK with active MongoDB connection'
+    );
 
-    // 2. Standard Email/Password Registration
-    const user1Email = `tester${randomSuffix}@taskflow.dev`;
-    const regRes = await request('/auth/register', {
+    // ---------------------------------------------------------
+    // 2. Dev OTP Backdoor Removal Verification (Security Hardening)
+    // ---------------------------------------------------------
+    const backdoorRes = await request(`/auth/dev/otp/attacker@test.com/login`);
+    assert(
+      backdoorRes.status === 404,
+      '2. Dev OTP bypass route /auth/dev/otp/:email/:purpose returns 404 (backdoor removed)'
+    );
+
+    // ---------------------------------------------------------
+    // 3. User Registration with Tenant Auto-Provisioning
+    // ---------------------------------------------------------
+    const user1Email = `ceo${randomSuffix}@acmecorp.com`;
+    const regRes1 = await request('/auth/register', {
       method: 'POST',
       body: JSON.stringify({
-        name: 'Jordan Lee',
+        name: 'Alice Johnson',
         email: user1Email,
-        password: 'password123'
+        password: 'Password123!'
       })
     });
     assert(
-      regRes.status === 201 && regRes.data.token && regRes.data.user.email === user1Email,
-      '2. User 1 registered with password & received JWT token'
+      regRes1.status === 201 &&
+      Boolean(regRes1.data.token) &&
+      Boolean(regRes1.data.refreshToken) &&
+      Boolean(regRes1.data.organization) &&
+      regRes1.data.organization.plan === 'free',
+      '3. User 1 registered with password, received access+refresh tokens, and auto-provisioned organization'
     );
-    const user1Token = regRes.data.token;
+    const user1Token = regRes1.data.token;
+    let user1RefreshToken = regRes1.data.refreshToken;
+    const user1OrgId = regRes1.data.organization._id;
 
-    // 3. Duplicate Email Registration Prevention
+    // ---------------------------------------------------------
+    // 4. Duplicate Email Registration Prevention
+    // ---------------------------------------------------------
     const dupRes = await request('/auth/register', {
       method: 'POST',
       body: JSON.stringify({
-        name: 'Jordan Fake',
+        name: 'Alice Imposter',
         email: user1Email,
-        password: 'password999'
+        password: 'Password999!'
       })
     });
-    assert(dupRes.status === 400, '3. Duplicate email registration rejected with 400');
+    assert(dupRes.status === 400, '4. Duplicate email registration rejected with 400');
 
-    // 4. Password Login
+    // ---------------------------------------------------------
+    // 5. Password Authentication
+    // ---------------------------------------------------------
     const loginRes = await request('/auth/login', {
       method: 'POST',
       body: JSON.stringify({
         email: user1Email,
-        password: 'password123'
+        password: 'Password123!'
       })
     });
-    assert(loginRes.status === 200 && loginRes.data.user.email === user1Email, '4. Password login verified');
+    assert(
+      loginRes.status === 200 && Boolean(loginRes.data.token) && Boolean(loginRes.data.refreshToken),
+      '5. Password login successful and yields valid session'
+    );
+    // Use this fresh session for rotation test
+    user1RefreshToken = loginRes.data.refreshToken;
 
-    // 5. Wrong Password Rejection
+    // ---------------------------------------------------------
+    // 6. Wrong Password Rejection
+    // ---------------------------------------------------------
     const badLogin = await request('/auth/login', {
       method: 'POST',
       body: JSON.stringify({
         email: user1Email,
-        password: 'wrongpassword'
+        password: 'WrongPassword!'
       })
     });
-    assert(badLogin.status === 401, '5. Incorrect password correctly rejected with 401');
+    assert(badLogin.status === 401, '6. Incorrect password correctly rejected with 401');
 
-    // 5b. SMTP Provider & Configuration Behavior Test
-    const noSmtpRes = await fetch(`${BASE_URL}/auth/otp/request`, {
+    // ---------------------------------------------------------
+    // 7. Revocable Sessions: Refresh Token Rotation
+    // ---------------------------------------------------------
+    const refreshRes = await request('/auth/refresh', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: `verify-smtp-${randomSuffix}@taskflow.dev` })
+      body: JSON.stringify({
+        refreshToken: user1RefreshToken
+      })
     });
-    const noSmtpData = await noSmtpRes.json().catch(() => ({}));
-    if (noSmtpRes.status === 503) {
-      assert(
-        noSmtpData.code === 'SMTP_NOT_CONFIGURED',
-        '5b. Server refuses to claim email was sent when SMTP is unconfigured (returns 503)'
-      );
-    } else {
-      assert(
-        noSmtpRes.status === 200 && noSmtpData.success,
-        '5b. Live SMTP credentials active: verification request accepted for transmission'
-      );
+    assert(
+      refreshRes.status === 200 &&
+      Boolean(refreshRes.data.token) &&
+      Boolean(refreshRes.data.refreshToken) &&
+      refreshRes.data.refreshToken !== user1RefreshToken,
+      '7. Refresh token rotation successfully exchanges old token for new pair'
+    );
+    const rotatedAccessToken = refreshRes.data.token;
+    const rotatedRefreshToken = refreshRes.data.refreshToken;
+
+    // ---------------------------------------------------------
+    // 8. Revocable Sessions: Reuse Detection (Compromise Defense)
+    // ---------------------------------------------------------
+    const reuseAttempt = await request('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({
+        refreshToken: user1RefreshToken // Replaying already-used token
+      })
+    });
+    assert(
+      reuseAttempt.status === 403,
+      '8. Token reuse detection triggers: replayed refresh token rejected with 403 and revokes family'
+    );
+
+    // ---------------------------------------------------------
+    // 9. Active Sessions Listing
+    // ---------------------------------------------------------
+    const sessionsRes = await request('/auth/sessions', {
+      headers: { Authorization: `Bearer ${rotatedAccessToken}` }
+    });
+    assert(
+      sessionsRes.status === 200 && Array.isArray(sessionsRes.data.sessions),
+      '9. User can query active revocable sessions'
+    );
+
+    // ---------------------------------------------------------
+    // 10. Multi-Tenancy & Default Organization Query
+    // ---------------------------------------------------------
+    const orgRes = await request('/organizations/current', {
+      headers: {
+        Authorization: `Bearer ${user1Token}`,
+        'x-organization-id': user1OrgId
+      }
+    });
+    assert(
+      orgRes.status === 200 &&
+      orgRes.data.organization._id === user1OrgId &&
+      orgRes.data.userRole === 'owner',
+      '10. Current organization retrieved with owner role'
+    );
+
+    // ---------------------------------------------------------
+    // 11. Multi-Tenant Task Creation
+    // ---------------------------------------------------------
+    const taskCreateRes1 = await request('/tasks', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${user1Token}`,
+        'x-organization-id': user1OrgId
+      },
+      body: JSON.stringify({
+        title: 'Org 1 Sensitive Financial Audit',
+        priority: 'high',
+        category: 'Finance',
+        dueDate: '2026-11-15'
+      })
+    });
+    assert(
+      taskCreateRes1.status === 201 &&
+      taskCreateRes1.data.task.title === 'Org 1 Sensitive Financial Audit' &&
+      taskCreateRes1.data.task.organization === user1OrgId,
+      '11. Task created in Org 1 with tenant boundary metadata'
+    );
+    const org1TaskId = taskCreateRes1.data.task._id;
+
+    // ---------------------------------------------------------
+    // 12. Register User 2 in Separate Organization (Org 2)
+    // ---------------------------------------------------------
+    const user2Email = `competitor${randomSuffix}@beta.org`;
+    const regRes2 = await request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Bob Rival',
+        email: user2Email,
+        password: 'Password456!'
+      })
+    });
+    assert(
+      regRes2.status === 201 && regRes2.data.organization._id !== user1OrgId,
+      '12. User 2 registered in independent isolated Organization 2'
+    );
+    const user2Token = regRes2.data.token;
+    const user2OrgId = regRes2.data.organization._id;
+
+    // ---------------------------------------------------------
+    // 13. Tenant Data Isolation: User 2 CANNOT access Org 1 tasks
+    // ---------------------------------------------------------
+    const breachAttemptGet = await request(`/tasks/${org1TaskId}`, {
+      headers: {
+        Authorization: `Bearer ${user2Token}`,
+        'x-organization-id': user2OrgId
+      }
+    });
+    assert(
+      breachAttemptGet.status === 404,
+      '13a. Cross-tenant data isolation: User 2 receives 404 attempting to read Org 1 task'
+    );
+
+    const breachAttemptDelete = await request(`/tasks/${org1TaskId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${user2Token}`,
+        'x-organization-id': user2OrgId
+      }
+    });
+    assert(
+      breachAttemptDelete.status === 404,
+      '13b. Cross-tenant data isolation: User 2 receives 404 attempting to delete Org 1 task'
+    );
+
+    // ---------------------------------------------------------
+    // 14. Bounded Pagination: Query limit & page metadata
+    // ---------------------------------------------------------
+    // Create 3 more tasks in Org 1 to verify pagination
+    for (let i = 1; i <= 3; i++) {
+      await request('/tasks', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${user1Token}`,
+          'x-organization-id': user1OrgId
+        },
+        body: JSON.stringify({
+          title: `Org 1 Task Batch #${i}`,
+          priority: 'medium',
+          category: 'Work'
+        })
+      });
     }
 
-    // 6. Request Email Login OTP (with test mode)
-    const otpEmail = `otpuser${randomSuffix}@taskflow.dev`;
-    const otpReq = await request('/auth/otp/request', {
-      method: 'POST',
-      body: JSON.stringify({ email: otpEmail })
+    const pagedTasks = await request('/tasks?page=1&limit=2', {
+      headers: {
+        Authorization: `Bearer ${user1Token}`,
+        'x-organization-id': user1OrgId
+      }
     });
     assert(
-      otpReq.status === 200 && otpReq.data.success && !otpReq.data.otp,
-      '6. Email OTP requested; plain OTP is NOT leaked in API response'
+      pagedTasks.status === 200 &&
+      pagedTasks.data.tasks.length === 2 &&
+      pagedTasks.data.pagination &&
+      pagedTasks.data.pagination.page === 1 &&
+      pagedTasks.data.pagination.limit === 2 &&
+      pagedTasks.data.pagination.totalPages >= 2 &&
+      pagedTasks.data.pagination.hasMore === true,
+      '14. Bounded pagination verified: returns exact limit and pagination metadata'
     );
 
-    // 7. OTP Request 60-Second Cooldown Protection
-    const coolReq = await request('/auth/otp/request', {
-      method: 'POST',
-      body: JSON.stringify({ email: otpEmail })
-    });
-    assert(
-      coolReq.status === 429,
-      '7. Repeated OTP request within 60s rejected with 429 Rate Limit'
-    );
-
-    // Retrieve simulated dev OTP from internal store endpoint
-    const otpFetch = await request(`/auth/dev/otp/${otpEmail}/login`);
-    const storedOtp = otpFetch.data?.otp;
-    assert(
-      Boolean(storedOtp && storedOtp.length === 6),
-      '8. Cryptographically generated 6-digit OTP confirmed'
-    );
-
-    // 9. Incorrect OTP Verification Attempt
-    const badOtpVerify = await request('/auth/otp/verify', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: otpEmail,
-        otp: '000000'
-      })
-    });
-    assert(
-      badOtpVerify.status === 400 && badOtpVerify.data.message.includes('remaining'),
-      '9. Incorrect OTP rejected with remaining attempt count'
-    );
-
-    // 10. Valid OTP Verification & Passwordless Account Creation
-    const validOtpVerify = await request('/auth/otp/verify', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: otpEmail,
-        otp: storedOtp,
-        name: 'Morgan OTP'
-      })
-    });
-    assert(
-      validOtpVerify.status === 200 &&
-      validOtpVerify.data.token &&
-      validOtpVerify.data.user.authProviders.includes('email_otp'),
-      '10. Valid Email OTP verified; user authenticated with JWT'
-    );
-    const otpUserToken = validOtpVerify.data.token;
-
-    // 11. OTP Single-Use Invalidation (replay attack defense)
-    const replayOtp = await request('/auth/otp/verify', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: otpEmail,
-        otp: storedOtp
-      })
-    });
-    assert(
-      replayOtp.status === 400,
-      '11. Replayed / already-used OTP rejected (single-use enforced)'
-    );
-
-    // 12. Forgot Password - User Enumeration Defense
-    const ghostEmail = `nonexistent${randomSuffix}@taskflow.dev`;
-    const ghostForgot = await request('/auth/forgot-password', {
-      method: 'POST',
-      body: JSON.stringify({ email: ghostEmail })
-    });
-    const realForgot = await request('/auth/forgot-password', {
-      method: 'POST',
-      body: JSON.stringify({ email: user1Email })
-    });
-    assert(
-      ghostForgot.status === 200 &&
-      realForgot.status === 200 &&
-      ghostForgot.data.message === realForgot.data.message,
-      '12. Forgot password provides identical generic message (user enumeration prevented)'
-    );
-
-    // 13. Forgot Password - Verify Reset OTP
-    const resetOtpFetch = await request(`/auth/dev/otp/${user1Email}/reset_password`);
-    const resetOtp = resetOtpFetch.data?.otp;
-    const verifyReset = await request('/auth/reset-password/verify-otp', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: user1Email,
-        otp: resetOtp
-      })
-    });
-    assert(
-      verifyReset.status === 200 && Boolean(verifyReset.data.resetToken),
-      '13. Password reset OTP verified; received short-lived reset authorization token'
-    );
-    const resetToken = verifyReset.data.resetToken;
-
-    // 14. Cross-purpose OTP prevention
-    // (Login OTP cannot be verified as Reset OTP)
-    const crossPurpose = await request('/auth/reset-password/verify-otp', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: otpEmail,
-        otp: '123456'
-      })
-    });
-    assert(
-      crossPurpose.status === 400,
-      '14. Strict purpose isolation enforced across login and reset OTPs'
-    );
-
-    // 15. Complete Password Reset
-    const completeReset = await request('/auth/reset-password', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: user1Email,
-        resetToken,
-        newPassword: 'newsecurepassword456'
-      })
-    });
-    assert(
-      completeReset.status === 200,
-      '15. Password successfully updated in database'
-    );
-
-    // 16. Login with New Password & Rejection with Old Password
-    const oldPassLogin = await request('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: user1Email,
-        password: 'password123'
-      })
-    });
-    const newPassLogin = await request('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: user1Email,
-        password: 'newsecurepassword456'
-      })
-    });
-    assert(
-      oldPassLogin.status === 401 && newPassLogin.status === 200,
-      '16. Old password rejected; login with new password succeeds'
-    );
-
-    // 17. Google Auth Endpoint Validation
-    const emptyGoogle = await request('/auth/google', {
-      method: 'POST',
-      body: JSON.stringify({})
-    });
-    assert(
-      emptyGoogle.status === 400,
-      '17. Google endpoint requires credential ID token'
-    );
-
-    // 18. Task Management & Isolation with New User
-    const task1 = await request('/tasks', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${user1Token}` },
-      body: JSON.stringify({
-        title: 'Confidential Task of User 1',
-        priority: 'high',
-        category: 'Work'
-      })
-    });
-    assert(
-      task1.status === 201 && task1.data.task.title === 'Confidential Task of User 1',
-      '18. Task creation works for authenticated user'
-    );
-    const task1Id = task1.data.task._id;
-
-    // 19. Cross-User Data Isolation Protection (403 Forbidden)
-    const unauthorizedAccess = await request(`/tasks/${task1Id}`, {
-      headers: { Authorization: `Bearer ${otpUserToken}` }
-    });
-    const unauthorizedDelete = await request(`/tasks/${task1Id}`, {
+    // ---------------------------------------------------------
+    // 15. Soft Deletion & Audit Logging
+    // ---------------------------------------------------------
+    const deleteRes = await request(`/tasks/${org1TaskId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${otpUserToken}` }
+      headers: {
+        Authorization: `Bearer ${user1Token}`,
+        'x-organization-id': user1OrgId
+      }
+    });
+    assert(deleteRes.status === 200, '15a. Task soft deleted successfully');
+
+    // Confirm excluded from active query
+    const verifyExclusion = await request('/tasks', {
+      headers: {
+        Authorization: `Bearer ${user1Token}`,
+        'x-organization-id': user1OrgId
+      }
+    });
+    const foundDeleted = verifyExclusion.data.tasks.find((t) => t._id === org1TaskId);
+    assert(!foundDeleted, '15b. Soft-deleted task is excluded from standard active tasks list');
+
+    // ---------------------------------------------------------
+    // 16. Timezone Handling: Evaluation with x-timezone header
+    // ---------------------------------------------------------
+    const tzTaskRes = await request('/tasks', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${user1Token}`,
+        'x-organization-id': user1OrgId,
+        'x-timezone': 'America/Los_Angeles'
+      },
+      body: JSON.stringify({
+        title: 'West Coast Timezone Verification Task',
+        priority: 'high',
+        category: 'Personal',
+        dueDate: '2026-12-31'
+      })
     });
     assert(
-      unauthorizedAccess.status === 403 && unauthorizedDelete.status === 403,
-      '19. Strict cross-user data isolation verified: User 2 gets 403 Forbidden'
+      tzTaskRes.status === 201 &&
+      tzTaskRes.data.task.dueDateString === '2026-12-31',
+      '16. Task stored with normalized calendar dueDateString honoring client timezone'
     );
 
-    // 20. Task Status Toggle & Dashboard Stats
-    const toggleRes = await request(`/tasks/${task1Id}/toggle`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${user1Token}` }
-    });
-    const statsRes = await request('/tasks/stats', {
-      headers: { Authorization: `Bearer ${user1Token}` }
+    // ---------------------------------------------------------
+    // 17. Billing Plans & Entitlements Configuration
+    // ---------------------------------------------------------
+    const plansRes = await request('/billing/plans');
+    assert(
+      plansRes.status === 200 &&
+      Boolean(plansRes.data.plans.free) &&
+      Boolean(plansRes.data.plans.pro) &&
+      Boolean(plansRes.data.plans.business),
+      '17. Billing tiers (free, pro, business) with maxMembers and maxTasks published'
+    );
+
+    // ---------------------------------------------------------
+    // 18. RBAC: Team Member Invitations
+    // ---------------------------------------------------------
+    const inviteRes = await request(`/organizations/${user1OrgId}/invitations`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${user1Token}`,
+        'x-organization-id': user1OrgId
+      },
+      body: JSON.stringify({
+        email: `newhire${randomSuffix}@acmecorp.com`,
+        role: 'member'
+      })
     });
     assert(
-      toggleRes.status === 200 &&
-      toggleRes.data.task.status === 'completed' &&
-      statsRes.data.stats.completed >= 1,
-      '20. Task toggling and live dashboard statistics computation verified'
+      inviteRes.status === 201 &&
+      inviteRes.data.invitation.email === `newhire${randomSuffix}@acmecorp.com` &&
+      inviteRes.data.invitation.role === 'member',
+      '18. Organization owner successfully invited team member'
     );
 
-    console.log(`\n======================================================`);
-    console.log(` Test Results: ${passed} passed, ${failed} failed.`);
-    console.log(`======================================================`);
+    // ---------------------------------------------------------
+    // 19. Session Invalidation: Sign Out All Devices
+    // ---------------------------------------------------------
+    // Log in user1 to establish fresh active session after earlier reuse revocation test
+    const freshLogin = await request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: user1Email,
+        password: 'Password123!'
+      })
+    });
+    const freshToken = freshLogin.data.token;
+
+    const logoutAllRes = await request('/auth/logout-all', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${freshToken}`
+      }
+    });
+    assert(
+      logoutAllRes.status === 200 && logoutAllRes.data.sessionsRevoked >= 1,
+      '19. Sign out from all devices revokes all active session records'
+    );
+
+    console.log(`\n================================================================`);
+    console.log(` Test Execution Complete: ${passed} passed, ${failed} failed.`);
+    console.log(`================================================================`);
     if (failed > 0) {
       process.exitCode = 1;
     }

@@ -19,23 +19,26 @@ const getStripe = () => {
 
 // @desc    Get subscription status and available plans
 // @route   GET /api/billing/plans
-// @access  Private
+// @access  Public / Optional Auth
 export const getBillingPlans = async (req, res, next) => {
   try {
-    const org = req.organization;
-    const currentPlan = getOrgPlan(org);
+    const org = req.organization || null;
+    const currentPlan = org ? getOrgPlan(org) : null;
 
     res.status(200).json({
       success: true,
-      currentPlan: {
-        id: org.plan || 'free',
-        name: currentPlan.name,
-        status: org.subscription?.status || 'none',
-        currentPeriodEnd: org.subscription?.currentPeriodEnd,
-        cancelAtPeriodEnd: org.subscription?.cancelAtPeriodEnd || false,
-        isPersonal: org.isPersonal
-      },
-      plans: Object.values(PLANS)
+      currentPlan: org
+        ? {
+            id: org.plan || 'free',
+            name: currentPlan?.name || 'Free',
+            status: org.subscription?.status || 'none',
+            currentPeriodEnd: org.subscription?.currentPeriodEnd,
+            cancelAtPeriodEnd: org.subscription?.cancelAtPeriodEnd || false,
+            isPersonal: org.isPersonal
+          }
+        : null,
+      plans: PLANS,
+      planList: Object.values(PLANS)
     });
   } catch (error) {
     next(error);
