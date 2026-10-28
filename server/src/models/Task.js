@@ -8,6 +8,18 @@ const taskSchema = new mongoose.Schema(
       required: true,
       index: true
     },
+    organization: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      required: true,
+      index: true
+    },
+    workspace: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Workspace',
+      default: null,
+      index: true
+    },
     title: {
       type: String,
       required: [true, 'Please provide a task title'],
@@ -33,10 +45,29 @@ const taskSchema = new mongoose.Schema(
       type: Date,
       default: null
     },
+    dueDateString: {
+      type: String,
+      default: null,
+      index: true
+    },
     category: {
       type: String,
       trim: true,
       default: 'General'
+    },
+    assignedTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    deletedAt: {
+      type: Date,
+      default: null
     }
   },
   {
@@ -44,11 +75,12 @@ const taskSchema = new mongoose.Schema(
   }
 );
 
-// Compound indexes for user-scoped queries and performance
-taskSchema.index({ user: 1, status: 1 });
-taskSchema.index({ user: 1, dueDate: 1 });
-taskSchema.index({ user: 1, priority: 1 });
-taskSchema.index({ user: 1, createdAt: -1 });
+// High-performance compound indexes for multi-tenant queries
+taskSchema.index({ organization: 1, isDeleted: 1, status: 1 });
+taskSchema.index({ organization: 1, isDeleted: 1, dueDateString: 1 });
+taskSchema.index({ organization: 1, isDeleted: 1, priority: 1 });
+taskSchema.index({ organization: 1, isDeleted: 1, user: 1 });
+taskSchema.index({ user: 1, isDeleted: 1, createdAt: -1 });
 
 taskSchema.methods.toJSON = function () {
   const task = this.toObject();

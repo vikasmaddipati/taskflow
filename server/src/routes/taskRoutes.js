@@ -9,11 +9,13 @@ import {
   deleteTask
 } from '../controllers/taskController.js';
 import { protect } from '../middleware/auth.js';
+import { resolveTenant } from '../middleware/tenant.js';
 
 const router = express.Router();
 
-// All task routes require authentication
+// All task routes require authentication and multi-tenant resolution
 router.use(protect);
+router.use(resolveTenant);
 
 router.route('/')
   .get(getTasks)
