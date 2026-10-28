@@ -248,14 +248,14 @@ export const SettingsView = ({ showToast }) => {
               type="text"
               value={serverUrl}
               onChange={(e) => setServerUrl(e.target.value)}
-              placeholder="http://192.168.1.15:5000/api"
+              placeholder="https://api.yourdomain.com/api or http://10.0.2.2:5000/api"
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
           <div className="flex items-center justify-between pt-1">
             <span className="text-[11px] text-slate-400">
-              Default: http://192.168.1.15:5000/api
+              Android emulator: http://10.0.2.2:5000/api | Web: /api
             </span>
             <button
               type="submit"
