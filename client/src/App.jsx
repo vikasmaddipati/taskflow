@@ -8,15 +8,18 @@ import { AllTasksView } from './views/AllTasksView';
 import { MyDayView } from './views/MyDayView';
 import { UpcomingView } from './views/UpcomingView';
 import { CompletedView } from './views/CompletedView';
+import { TeamView } from './views/TeamView';
+import { BillingView } from './views/BillingView';
 import { SettingsView } from './views/SettingsView';
 import { AuthView } from './views/AuthView';
 import { TaskModal } from './components/common/TaskModal';
 import { DeleteConfirmModal } from './components/common/DeleteConfirmModal';
+import { CreateOrgModal } from './components/common/CreateOrgModal';
 import { Toast } from './components/common/Toast';
 import api from './services/api';
 
 const AppContent = () => {
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading, currentOrg } = useAuth();
 
   // Navigation state
   const [currentView, setCurrentView] = useState('dashboard');
@@ -42,11 +45,22 @@ const AppContent = () => {
   const [taskToDelete, setTaskToDelete] = useState(null);
   const [isDeletingTask, setIsDeletingTask] = useState(false);
 
+  const [isCreateOrgModalOpen, setIsCreateOrgModalOpen] = useState(false);
+
   // Toast notification state
   const [toast, setToast] = useState(null);
 
   const showToast = useCallback((toastData) => {
     setToast(toastData);
+  }, []);
+
+  // Listen to organization switch events to refresh stats
+  useEffect(() => {
+    const handleOrgChanged = () => {
+      setRefreshTrigger((p) => p + 1);
+    };
+    window.addEventListener('org:changed', handleOrgChanged);
+    return () => window.removeEventListener('org:changed', handleOrgChanged);
   }, []);
 
   // Fetch quick stats for sidebar badges
@@ -62,14 +76,14 @@ const AppContent = () => {
           completionRate: res.data.stats.completionRate
         });
       }
-    } catch (err) {
+    } catch {
       // ignore badge error in background
     }
   }, [isAuthenticated]);
 
   useEffect(() => {
     fetchSidebarStats();
-  }, [fetchSidebarStats, refreshTrigger]);
+  }, [fetchSidebarStats, refreshTrigger, currentOrg?._id]);
 
   // Open modal for new task (with optional defaults)
   const handleOpenCreateModal = (defaults = null) => {
@@ -88,13 +102,11 @@ const AppContent = () => {
     setIsSubmittingTask(true);
     try {
       if (editingTask && editingTask._id) {
-        // Update existing task
         const res = await api.put(`/tasks/${editingTask._id}`, taskData);
         if (res.data.success) {
           showToast({ type: 'success', message: 'Task updated successfully' });
         }
       } else {
-        // Create new task
         const res = await api.post('/tasks', taskData);
         if (res.data.success) {
           showToast({ type: 'success', message: 'Task created successfully' });
@@ -141,7 +153,7 @@ const AppContent = () => {
     try {
       const res = await api.delete(`/tasks/${taskToDelete._id}`);
       if (res.data.success) {
-        showToast({ type: 'success', message: 'Task permanently deleted' });
+        showToast({ type: 'success', message: 'Task moved to trash' });
         setIsDeleteModalOpen(false);
         setTaskToDelete(null);
         setRefreshTrigger((prev) => prev + 1);
@@ -184,6 +196,7 @@ const AppContent = () => {
           currentView={currentView}
           onOpenMobileMenu={() => setIsMobileOpen(true)}
           onOpenCreateModal={() => handleOpenCreateModal()}
+          onOpenCreateOrgModal={() => setIsCreateOrgModalOpen(true)}
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
@@ -236,6 +249,14 @@ const AppContent = () => {
             />
           )}
 
+          {currentView === 'team' && (
+            <TeamView showToast={showToast} />
+          )}
+
+          {currentView === 'billing' && (
+            <BillingView showToast={showToast} />
+          )}
+
           {currentView === 'settings' && (
             <SettingsView showToast={showToast} />
           )}
@@ -263,6 +284,12 @@ const AppContent = () => {
         }}
         onConfirm={handleConfirmDelete}
         isDeleting={isDeletingTask}
+      />
+
+      <CreateOrgModal
+        isOpen={isCreateOrgModalOpen}
+        onClose={() => setIsCreateOrgModalOpen(false)}
+        showToast={showToast}
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />

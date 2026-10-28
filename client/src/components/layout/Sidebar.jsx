@@ -5,6 +5,8 @@ import {
   Sun,
   Calendar,
   CheckCircle2,
+  Users,
+  CreditCard,
   Settings,
   Sparkles,
   X
@@ -49,6 +51,18 @@ export const Sidebar = ({
       badge: stats.completed
     },
     {
+      id: 'team',
+      label: 'Team & Members',
+      icon: Users,
+      badge: null
+    },
+    {
+      id: 'billing',
+      label: 'Billing & Plans',
+      icon: CreditCard,
+      badge: null
+    },
+    {
       id: 'settings',
       label: 'Settings',
       icon: Settings,
@@ -73,7 +87,7 @@ export const Sidebar = ({
           </div>
           <div>
             <span className="font-bold text-base text-white tracking-tight">TaskFlow</span>
-            <span className="text-[10px] text-indigo-400 font-semibold block leading-none">MERN Workspace</span>
+            <span className="text-[10px] text-indigo-400 font-semibold block leading-none">SaaS Platform</span>
           </div>
         </div>
 
