@@ -104,5 +104,11 @@ export const config = {
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
     proPriceId: process.env.STRIPE_PRICE_PRO_MONTHLY || '',
     businessPriceId: process.env.STRIPE_PRICE_BUSINESS_MONTHLY || ''
+  },
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID || '',
+    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+    currency: process.env.BILLING_DEFAULT_CURRENCY || 'INR'
   }
 };

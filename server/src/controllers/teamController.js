@@ -1,6 +1,7 @@
 import Team from '../models/Team.js';
 import Membership from '../models/Membership.js';
 import AuditLog from '../models/AuditLog.js';
+import { getEffectiveEntitlements } from '../services/entitlementService.js';
 
 // @desc    List all teams in active organization
 // @route   GET /api/teams
@@ -34,6 +35,18 @@ export const createTeam = async (req, res, next) => {
 
     if (!name || name.trim() === '') {
       return res.status(400).json({ success: false, message: 'Team name is required' });
+    }
+
+    // Feature Gate: Team collaboration requires Team or Enterprise plan
+    const entitlements = await getEffectiveEntitlements(orgId);
+    if (!entitlements.features['teams.collaboration']) {
+      return res.status(403).json({
+        success: false,
+        code: 'FEATURE_GATED',
+        feature: 'teams.collaboration',
+        currentPlan: entitlements.plan.name,
+        message: 'Team squads and cross-functional grouping require the Team or Enterprise plan. Upgrade to unlock squads.'
+      });
     }
 
     const cleanName = name.trim();

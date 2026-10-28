@@ -10,6 +10,7 @@ import orgRoutes from './routes/orgRoutes.js';
 import billingRoutes from './routes/billingRoutes.js';
 import workspaceRoutes from './routes/workspaceRoutes.js';
 import teamRoutes from './routes/teamRoutes.js';
+import { handleRazorpayWebhook } from './controllers/webhookController.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 
 // Validate environment variables on startup
@@ -43,14 +44,20 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-timezone', 'x-organization-id']
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-timezone', 'x-organization-id', 'x-workspace-id', 'x-razorpay-signature']
   })
 );
 
-// Express Parsers
-// For Stripe webhook raw body verification, stripe route will use express.raw before json parser if needed
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// Express Parsers with rawBody retention for webhook signature verification
+app.use(
+  express.json({
+    limit: '2mb',
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    }
+  })
+);
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // Health check route with active database connection verification
 app.get('/api/health', (req, res) => {
@@ -72,6 +79,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Mount Routes
+app.post('/api/webhooks/razorpay', handleRazorpayWebhook);
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/organizations', orgRoutes);

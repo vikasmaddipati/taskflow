@@ -1,59 +1,146 @@
 /**
- * Configurable SaaS Plans and Resource Entitlements
+ * Centralized SaaS Plan Catalog, Resource Quotas, and Feature Entitlements
  */
 
 export const PLANS = {
   free: {
     id: 'free',
-    name: 'Starter (Free)',
-    priceMonthly: 0,
+    name: 'Free Starter',
+    description: 'Essential task tracking for individuals and micro-teams',
+    price: 0,
+    currency: 'INR',
+    interval: 'monthly',
+    isSelfServe: true,
     limits: {
-      maxMembers: 3,
       maxTasks: 100,
-      maxWorkspaces: 1
+      maxTasksPerMonth: 100,
+      maxMembers: 3,
+      maxWorkspaces: 1,
+      storageMb: 100,
+      maxExportsPerMonth: 1
     },
     features: {
-      analytics: false,
-      exportData: false,
-      prioritySupport: false
-    }
+      'tasks.basic': true,
+      'tasks.advanced_filters': false,
+      'tasks.bulk_actions': false,
+      'tasks.export': false,
+      'workspaces.multiple': false,
+      'teams.collaboration': false,
+      'members.invite': true,
+      'analytics.advanced': false,
+      'priority_support': false
+    },
+    razorpayPlanId: null,
+    stripePriceId: null
   },
+
   pro: {
     id: 'pro',
     name: 'Professional',
-    priceMonthly: 12,
+    description: 'Advanced productivity and workflow filters for power users',
+    price: 799,
+    currency: 'INR',
+    interval: 'monthly',
+    isSelfServe: true,
     limits: {
-      maxMembers: 15,
       maxTasks: 2500,
-      maxWorkspaces: 5
+      maxTasksPerMonth: 2500,
+      maxMembers: 15,
+      maxWorkspaces: 5,
+      storageMb: 5000,
+      maxExportsPerMonth: 25
     },
     features: {
-      analytics: true,
-      exportData: true,
-      prioritySupport: false
-    }
+      'tasks.basic': true,
+      'tasks.advanced_filters': true,
+      'tasks.bulk_actions': true,
+      'tasks.export': true,
+      'workspaces.multiple': true,
+      'teams.collaboration': false,
+      'members.invite': true,
+      'analytics.advanced': true,
+      'priority_support': false
+    },
+    razorpayPlanId: process.env.RAZORPAY_PLAN_PRO || 'plan_pro_monthly',
+    stripePriceId: process.env.STRIPE_PRICE_PRO_MONTHLY || 'price_pro_monthly'
   },
-  business: {
-    id: 'business',
-    name: 'Enterprise / Business',
-    priceMonthly: 39,
+
+  team: {
+    id: 'team',
+    name: 'Team Collaboration',
+    description: 'Shared workspaces, team squads, and workload coordination',
+    price: 1999,
+    currency: 'INR',
+    interval: 'monthly',
+    isSelfServe: true,
     limits: {
-      maxMembers: 100,
-      maxTasks: 50000,
-      maxWorkspaces: 50
+      maxTasks: 10000,
+      maxTasksPerMonth: 10000,
+      maxMembers: 50,
+      maxWorkspaces: 25,
+      storageMb: 25000,
+      maxExportsPerMonth: 100
     },
     features: {
-      analytics: true,
-      exportData: true,
-      prioritySupport: true
-    }
+      'tasks.basic': true,
+      'tasks.advanced_filters': true,
+      'tasks.bulk_actions': true,
+      'tasks.export': true,
+      'workspaces.multiple': true,
+      'teams.collaboration': true,
+      'members.invite': true,
+      'analytics.advanced': true,
+      'priority_support': false
+    },
+    razorpayPlanId: process.env.RAZORPAY_PLAN_TEAM || 'plan_team_monthly',
+    stripePriceId: process.env.STRIPE_PRICE_TEAM_MONTHLY || 'price_team_monthly'
+  },
+
+  enterprise: {
+    id: 'enterprise',
+    name: 'Enterprise Scale',
+    description: 'Maximum scale, dedicated support, and custom data retention',
+    price: 4999,
+    currency: 'INR',
+    interval: 'monthly',
+    isSelfServe: true,
+    limits: {
+      maxTasks: 100000,
+      maxTasksPerMonth: 100000,
+      maxMembers: 500,
+      maxWorkspaces: 100,
+      storageMb: 100000,
+      maxExportsPerMonth: 1000
+    },
+    features: {
+      'tasks.basic': true,
+      'tasks.advanced_filters': true,
+      'tasks.bulk_actions': true,
+      'tasks.export': true,
+      'workspaces.multiple': true,
+      'teams.collaboration': true,
+      'members.invite': true,
+      'analytics.advanced': true,
+      'priority_support': true
+    },
+    razorpayPlanId: process.env.RAZORPAY_PLAN_ENTERPRISE || 'plan_enterprise_monthly',
+    stripePriceId: process.env.STRIPE_PRICE_BUSINESS_MONTHLY || 'price_enterprise_monthly'
   }
 };
 
+// Alias for legacy or alternative tier naming
+PLANS.business = {
+  ...PLANS.team,
+  id: 'business',
+  name: 'Business Team'
+};
+
+export const DEFAULT_PLAN_ID = 'free';
+
 /**
- * Get plan config for an organization
+ * Returns normalized plan definition for an organization
  */
 export const getOrgPlan = (organization) => {
-  const planKey = organization?.plan || 'free';
+  const planKey = (organization?.plan || DEFAULT_PLAN_ID).toLowerCase();
   return PLANS[planKey] || PLANS.free;
 };

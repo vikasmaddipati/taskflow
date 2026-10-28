@@ -1,6 +1,7 @@
 import Workspace from '../models/Workspace.js';
 import AuditLog from '../models/AuditLog.js';
 import Task from '../models/Task.js';
+import { checkQuota } from '../services/entitlementService.js';
 
 // @desc    List all workspaces in active organization
 // @route   GET /api/workspaces
@@ -39,6 +40,19 @@ export const createWorkspace = async (req, res, next) => {
 
     if (!name || name.trim() === '') {
       return res.status(400).json({ success: false, message: 'Workspace name is required' });
+    }
+
+    // Enforce workspace quota
+    const quotaCheck = await checkQuota(orgId, 'workspaces');
+    if (!quotaCheck.allowed) {
+      return res.status(403).json({
+        success: false,
+        code: 'QUOTA_EXCEEDED',
+        metric: 'workspaces',
+        currentUsage: quotaCheck.currentUsage,
+        limit: quotaCheck.limit,
+        message: `Workspace limit reached: Your ${quotaCheck.planName} plan allows up to ${quotaCheck.limit} workspace(s). Upgrade to Pro or Team to create more workspaces.`
+      });
     }
 
     const cleanName = name.trim();

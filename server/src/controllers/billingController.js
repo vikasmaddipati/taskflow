@@ -1,21 +1,17 @@
-import Stripe from 'stripe';
 import Organization from '../models/Organization.js';
+import Subscription from '../models/Subscription.js';
+import Invoice from '../models/Invoice.js';
 import AuditLog from '../models/AuditLog.js';
-import { config } from '../config/env.js';
 import { PLANS, getOrgPlan } from '../config/plans.js';
-
-let stripeClient = null;
-const getStripe = () => {
-  if (!config.stripe.secretKey || config.stripe.secretKey.includes('placeholder')) {
-    return null;
-  }
-  if (!stripeClient) {
-    stripeClient = new Stripe(config.stripe.secretKey, {
-      apiVersion: '2023-10-16'
-    });
-  }
-  return stripeClient;
-};
+import {
+  createSubscriptionSession,
+  verifyPaymentSignature
+} from '../services/paymentService.js';
+import {
+  getEffectiveEntitlements,
+  getUsageSummary
+} from '../services/entitlementService.js';
+import { ROLES } from '../config/permissions.js';
 
 // @desc    Get subscription status and available plans
 // @route   GET /api/billing/plans
@@ -23,20 +19,31 @@ const getStripe = () => {
 export const getBillingPlans = async (req, res, next) => {
   try {
     const org = req.organization || null;
-    const currentPlan = org ? getOrgPlan(org) : null;
+    let currentPlan = null;
+    let usage = null;
+
+    if (org) {
+      currentPlan = getOrgPlan(org);
+      try {
+        usage = await getUsageSummary(org._id);
+      } catch {
+        // ignore if not yet initialized
+      }
+    }
 
     res.status(200).json({
       success: true,
       currentPlan: org
         ? {
             id: org.plan || 'free',
-            name: currentPlan?.name || 'Free',
-            status: org.subscription?.status || 'none',
+            name: currentPlan?.name || 'Free Starter',
+            status: org.subscription?.status || 'active',
             currentPeriodEnd: org.subscription?.currentPeriodEnd,
             cancelAtPeriodEnd: org.subscription?.cancelAtPeriodEnd || false,
             isPersonal: org.isPersonal
           }
         : null,
+      usage,
       plans: PLANS,
       planList: Object.values(PLANS)
     });
@@ -45,215 +52,259 @@ export const getBillingPlans = async (req, res, next) => {
   }
 };
 
-// @desc    Create Stripe Checkout Session for Plan Upgrade
+// @desc    Get complete organization billing status, quotas, and invoices
+// @route   GET /api/billing/status
+// @access  Private (Owner / Admin / Billing Admin)
+export const getBillingStatus = async (req, res, next) => {
+  try {
+    const orgId = req.organization._id;
+
+    const [usage, invoices] = await Promise.all([
+      getUsageSummary(orgId),
+      Invoice.find({ organization: orgId })
+        .sort({ createdAt: -1 })
+        .limit(20)
+    ]);
+
+    res.status(200).json({
+      success: true,
+      ...usage,
+      invoices
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Initiate Razorpay checkout session for subscription
 // @route   POST /api/billing/checkout
-// @access  Private (Owner only)
+// @access  Private (Owner / Admin / Billing Admin)
 export const createCheckoutSession = async (req, res, next) => {
   try {
-    const { planId } = req.body;
+    const { planId, billingInterval = 'monthly' } = req.body;
     const org = req.organization;
+    const callerRole = req.membership?.role;
 
-    if (!['pro', 'business'].includes(planId)) {
+    if (!['pro', 'team', 'enterprise'].includes(planId)) {
       return res.status(400).json({ success: false, message: 'Invalid plan selected' });
     }
 
-    if (req.orgRole !== 'owner') {
-      return res.status(403).json({ success: false, message: 'Only the organization owner can manage subscriptions' });
+    // Role check: Only Owner, Admin, or Billing Admin can initiate checkout
+    if (![ROLES.OWNER, ROLES.ADMIN, ROLES.BILLING_ADMIN].includes(callerRole)) {
+      return res.status(403).json({
+        success: false,
+        code: 'PERMISSION_DENIED',
+        message: 'Only organization owners, admins, or billing managers can manage subscriptions'
+      });
     }
 
-    const stripe = getStripe();
+    const session = await createSubscriptionSession({
+      organization: org,
+      user: req.user,
+      planId,
+      billingInterval
+    });
 
-    // If Stripe is in mock / development mode without real keys:
-    if (!stripe) {
-      // Simulate upgrade in development mode safely
-      org.plan = planId;
-      org.subscription = {
-        stripeCustomerId: `cus_sim_${Date.now()}`,
-        stripeSubscriptionId: `sub_sim_${Date.now()}`,
+    res.status(200).json({
+      success: true,
+      ...session
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Verify Razorpay payment signature & activate subscription
+// @route   POST /api/billing/verify
+// @access  Private (Owner / Admin / Billing Admin)
+export const verifyPayment = async (req, res, next) => {
+  try {
+    const {
+      razorpay_payment_id,
+      razorpay_subscription_id,
+      razorpay_signature,
+      planId
+    } = req.body;
+
+    const orgId = req.organization._id;
+
+    if (!razorpay_payment_id || !razorpay_subscription_id || !planId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required payment verification parameters'
+      });
+    }
+
+    // Validate signature
+    const isValid = verifyPaymentSignature({
+      razorpay_payment_id,
+      razorpay_subscription_id,
+      razorpay_signature
+    });
+
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_SIGNATURE',
+        message: 'Payment verification failed: invalid signature'
+      });
+    }
+
+    const planConfig = PLANS[planId] || PLANS.pro;
+
+    // 1. Upsert Subscription record
+    const subscription = await Subscription.findOneAndUpdate(
+      { organization: orgId },
+      {
+        organization: orgId,
+        user: req.user._id,
+        plan: planId,
+        provider: 'razorpay',
+        providerSubscriptionId: razorpay_subscription_id,
         status: 'active',
+        currency: planConfig.currency || 'INR',
         currentPeriodStart: new Date(),
         currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         cancelAtPeriodEnd: false
-      };
-      await org.save();
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
-      await AuditLog.create({
-        organization: org._id,
-        actor: req.user._id,
-        action: 'subscription.simulated_upgrade',
-        targetType: 'Organization',
-        targetId: org._id.toString(),
-        details: { plan: planId, mode: 'dev_simulation' },
-        ipAddress: req.ip
-      });
-
-      return res.status(200).json({
-        success: true,
-        mode: 'simulation',
-        message: `Plan upgraded to ${planId.toUpperCase()} (Development Simulation Mode). Configure STRIPE_SECRET_KEY in server/.env for live Stripe payments.`,
-        plan: planId
-      });
-    }
-
-    // Real Stripe Checkout Flow
-    let customerId = org.subscription?.stripeCustomerId;
-
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: req.user.email,
-        name: `${req.user.name} (${org.name})`,
-        metadata: {
-          organizationId: org._id.toString(),
-          userId: req.user._id.toString()
-        }
-      });
-      customerId = customer.id;
-      org.subscription.stripeCustomerId = customerId;
-      await org.save();
-    }
-
-    const priceId = planId === 'business' ? config.stripe.businessPriceId : config.stripe.proPriceId;
-
-    const session = await stripe.checkout.sessions.create({
-      customer: customerId,
-      payment_method_types: ['card'],
-      mode: 'subscription',
-      line_items: [
-        {
-          price: priceId || 'price_placeholder',
-          quantity: 1
-        }
-      ],
-      success_url: `${config.cors.clientUrl}/settings?billing_status=success`,
-      cancel_url: `${config.cors.clientUrl}/settings?billing_status=canceled`,
-      metadata: {
-        organizationId: org._id.toString(),
-        planId
+    // 2. Update Organization plan
+    await Organization.findByIdAndUpdate(orgId, {
+      plan: planId,
+      subscription: {
+        id: subscription._id,
+        status: 'active',
+        currentPeriodEnd: subscription.currentPeriodEnd
       }
+    });
+
+    // 3. Record Invoice record
+    await Invoice.create({
+      organization: orgId,
+      subscription: subscription._id,
+      provider: 'razorpay',
+      providerPaymentId: razorpay_payment_id,
+      amount: planConfig.price,
+      currency: planConfig.currency || 'INR',
+      status: 'paid',
+      paidAt: new Date(),
+      description: `Upgrade to ${planConfig.name}`
+    });
+
+    // 4. Audit Log
+    await AuditLog.create({
+      organization: orgId,
+      actor: req.user._id,
+      action: 'subscription.activated',
+      targetType: 'Subscription',
+      targetId: subscription._id.toString(),
+      details: { plan: planId, paymentId: razorpay_payment_id }
     });
 
     res.status(200).json({
       success: true,
-      url: session.url
+      message: `Successfully upgraded to ${planConfig.name}!`,
+      plan: planId,
+      subscription
     });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Create Stripe Customer Portal session
-// @route   POST /api/billing/portal
-// @access  Private (Owner only)
-export const createCustomerPortalSession = async (req, res, next) => {
+// @desc    Cancel subscription at period end
+// @route   POST /api/billing/cancel
+// @access  Private (Owner / Admin / Billing Admin)
+export const cancelSubscription = async (req, res, next) => {
   try {
-    const org = req.organization;
+    const orgId = req.organization._id;
+    const subscription = await Subscription.findOne({ organization: orgId });
 
-    if (req.orgRole !== 'owner') {
-      return res.status(403).json({ success: false, message: 'Only the organization owner can manage subscriptions' });
-    }
-
-    const stripe = getStripe();
-    if (!stripe || !org.subscription?.stripeCustomerId || org.subscription.stripeCustomerId.startsWith('cus_sim_')) {
+    if (!subscription || subscription.status === 'canceled') {
       return res.status(400).json({
         success: false,
-        message: 'No active Stripe billing profile found. Configure STRIPE_SECRET_KEY in server/.env.'
+        message: 'No active paid subscription found to cancel'
       });
     }
 
-    const portalSession = await stripe.billingPortal.sessions.create({
-      customer: org.subscription.stripeCustomerId,
-      return_url: `${config.cors.clientUrl}/settings`
+    subscription.cancelAtPeriodEnd = true;
+    subscription.canceledAt = new Date();
+    await subscription.save();
+
+    await AuditLog.create({
+      organization: orgId,
+      actor: req.user._id,
+      action: 'subscription.cancel_scheduled',
+      targetType: 'Subscription',
+      targetId: subscription._id.toString(),
+      details: { effectiveDate: subscription.currentPeriodEnd }
     });
 
     res.status(200).json({
       success: true,
-      url: portalSession.url
+      message: 'Subscription will be canceled at the end of the billing period',
+      currentPeriodEnd: subscription.currentPeriodEnd
     });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Stripe Webhook handler with signature validation
-// @route   POST /api/billing/webhook
-// @access  Public (Stripe signature verified)
-export const handleStripeWebhook = async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  const stripe = getStripe();
-
-  if (!stripe || !config.stripe.webhookSecret) {
-    return res.status(400).send('Stripe is not configured on this server');
-  }
-
-  let event;
+// @desc    Resume canceled subscription before period end
+// @route   POST /api/billing/resume
+// @access  Private (Owner / Admin / Billing Admin)
+export const resumeSubscription = async (req, res, next) => {
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, config.stripe.webhookSecret);
-  } catch (err) {
-    console.error(`[Stripe Webhook Error] ${err.message}`);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
+    const orgId = req.organization._id;
+    const subscription = await Subscription.findOne({ organization: orgId });
 
-  try {
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const session = event.data.object;
-        const orgId = session.metadata?.organizationId;
-        const planId = session.metadata?.planId || 'pro';
-
-        if (orgId) {
-          await Organization.findByIdAndUpdate(orgId, {
-            plan: planId,
-            'subscription.stripeSubscriptionId': session.subscription,
-            'subscription.status': 'active',
-            'subscription.currentPeriodStart': new Date()
-          });
-        }
-        break;
-      }
-
-      case 'customer.subscription.updated': {
-        const subscription = event.data.object;
-        const customerId = subscription.customer;
-
-        const statusMap = {
-          active: 'active',
-          trialing: 'trialing',
-          past_due: 'past_due',
-          canceled: 'canceled',
-          unpaid: 'past_due'
-        };
-
-        await Organization.findOneAndUpdate(
-          { 'subscription.stripeCustomerId': customerId },
-          {
-            'subscription.status': statusMap[subscription.status] || 'active',
-            'subscription.currentPeriodEnd': new Date(subscription.current_period_end * 1000),
-            'subscription.cancelAtPeriodEnd': subscription.cancel_at_period_end
-          }
-        );
-        break;
-      }
-
-      case 'customer.subscription.deleted': {
-        const subscription = event.data.object;
-        await Organization.findOneAndUpdate(
-          { 'subscription.stripeCustomerId': subscription.customer },
-          {
-            plan: 'free',
-            'subscription.status': 'canceled',
-            'subscription.stripeSubscriptionId': null
-          }
-        );
-        break;
-      }
-
-      default:
-        console.log(`[Stripe Webhook] Unhandled event type: ${event.type}`);
+    if (!subscription || !subscription.cancelAtPeriodEnd) {
+      return res.status(400).json({
+        success: false,
+        message: 'No subscription scheduled for cancellation'
+      });
     }
 
-    res.status(200).json({ received: true });
-  } catch (err) {
-    console.error(`[Stripe Webhook Processing Error]`, err);
-    res.status(500).json({ error: 'Webhook processing failed' });
+    subscription.cancelAtPeriodEnd = false;
+    subscription.canceledAt = null;
+    await subscription.save();
+
+    await AuditLog.create({
+      organization: orgId,
+      actor: req.user._id,
+      action: 'subscription.resumed',
+      targetType: 'Subscription',
+      targetId: subscription._id.toString()
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Subscription resumed successfully',
+      subscription
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    List payment invoices for organization
+// @route   GET /api/billing/invoices
+// @access  Private (Owner / Admin / Billing Admin)
+export const getInvoices = async (req, res, next) => {
+  try {
+    const orgId = req.organization._id;
+    const invoices = await Invoice.find({ organization: orgId })
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    res.status(200).json({
+      success: true,
+      count: invoices.length,
+      invoices
+    });
+  } catch (error) {
+    next(error);
   }
 };

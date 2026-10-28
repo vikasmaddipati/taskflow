@@ -369,7 +369,10 @@ export const inviteMember = async (req, res, next) => {
     if (currentMemberCount >= plan.limits.maxMembers) {
       return res.status(403).json({
         success: false,
-        code: 'QUOTA_EXCEEDED_MEMBERS',
+        code: 'QUOTA_EXCEEDED',
+        metric: 'members',
+        currentUsage: currentMemberCount,
+        limit: plan.limits.maxMembers,
         message: `Plan limit reached: The ${plan.name} plan allows up to ${plan.limits.maxMembers} members. Upgrade to Pro for more seats.`
       });
     }

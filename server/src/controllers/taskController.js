@@ -5,6 +5,7 @@ import AuditLog from '../models/AuditLog.js';
 import { getTimezoneDayBoundaries, normalizeDueDate, getValidTimezone } from '../utils/timezone.js';
 import { getOrgPlan } from '../config/plans.js';
 import { ROLES, PERMISSIONS, hasPermission } from '../config/permissions.js';
+import { checkQuota, recordUsage } from '../services/entitlementService.js';
 
 // @desc    Get paginated tasks for active organization with search, filter, and sorting
 // @route   GET /api/tasks
@@ -391,20 +392,16 @@ export const createTask = async (req, res, next) => {
 
     const orgId = req.organization._id;
 
-    // Check organization plan entitlements
-    const orgPlan = getOrgPlan(req.organization);
-    const currentTaskCount = await Task.countDocuments({
-      organization: orgId,
-      isDeleted: false
-    });
-
-    if (currentTaskCount >= orgPlan.limits.maxTasks) {
+    // Check monthly task creation quota via centralized entitlement engine
+    const quotaCheck = await checkQuota(orgId, 'tasks_created');
+    if (!quotaCheck.allowed) {
       return res.status(403).json({
         success: false,
-        code: 'QUOTA_EXCEEDED_TASKS',
-        message: `Plan limit reached: The ${orgPlan.name} plan allows up to ${orgPlan.limits.maxTasks} tasks. Please upgrade to Pro for higher limits.`,
-        currentCount: currentTaskCount,
-        maxAllowed: orgPlan.limits.maxTasks
+        code: 'QUOTA_EXCEEDED',
+        metric: 'tasks_created',
+        currentUsage: quotaCheck.currentUsage,
+        limit: quotaCheck.limit,
+        message: `Monthly task creation limit reached: Your ${quotaCheck.planName} plan allows up to ${quotaCheck.limit} tasks per month. Upgrade to Pro for more capacity.`
       });
     }
 
@@ -467,6 +464,9 @@ export const createTask = async (req, res, next) => {
       collaborators: validCollaborators,
       isPrivate: Boolean(isPrivate)
     });
+
+    // Record atomic usage in monthly ledger
+    await recordUsage(orgId, 'tasks_created', 1);
 
     // Record audit event
     await AuditLog.create({

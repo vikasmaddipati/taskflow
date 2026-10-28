@@ -12,10 +12,8 @@ export const resolveTenant = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    const requestedOrgId =
-      req.headers['x-organization-id'] ||
-      req.query.organizationId ||
-      req.user.currentOrganization;
+    const explicitlyRequestedOrgId = req.headers['x-organization-id'] || req.query.organizationId;
+    const requestedOrgId = explicitlyRequestedOrgId || req.user.currentOrganization;
 
     let organization = null;
     let membership = null;
@@ -28,6 +26,12 @@ export const resolveTenant = async (req, res, next) => {
 
       if (membership && membership.organization) {
         organization = membership.organization;
+      } else if (explicitlyRequestedOrgId) {
+        return res.status(403).json({
+          success: false,
+          code: 'TENANT_ACCESS_DENIED',
+          message: 'You do not have access to the requested organization'
+        });
       }
     }
 
