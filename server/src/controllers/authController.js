@@ -2,23 +2,54 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Otp from '../models/Otp.js';
-import { sendOtpEmail, isSmtpConfigured } from '../services/emailService.js';
+import Session from '../models/Session.js';
+import { sendOtpEmail } from '../services/emailService.js';
 import { verifyGoogleIdToken } from '../services/googleAuthService.js';
+import { config } from '../config/env.js';
 
-// Helper to generate JWT auth token
-const generateToken = (id) => {
-  return jwt.sign(
-    { id },
-    process.env.JWT_SECRET || 'super_secret_jwt_key_task_management_2026_modern',
-    {
-      expiresIn: process.env.JWT_EXPIRES_IN || '7d'
-    }
-  );
+// Helper to hash with sha256
+const hashSecret = (value) => {
+  return crypto.createHash('sha256').update(String(value).trim()).digest('hex');
 };
 
-// Helper to hash OTP with sha256
-const hashOtp = (otp) => {
-  return crypto.createHash('sha256').update(String(otp).trim()).digest('hex');
+// Helper to generate access & refresh token pair
+export const createAuthSession = async (user, req) => {
+  // 1. Generate short-lived access token (default 15m)
+  const accessToken = jwt.sign(
+    { id: user._id },
+    config.jwt.secret,
+    {
+      expiresIn: config.jwt.accessExpiresIn,
+      algorithm: 'HS256'
+    }
+  );
+
+  // 2. Generate cryptographically strong random refresh token (opaque string)
+  const rawRefreshToken = crypto.randomBytes(48).toString('hex');
+  const tokenHash = hashSecret(rawRefreshToken);
+
+  // 7 days expiration for refresh token
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  const userAgent = req.headers['user-agent'] || 'Unknown client';
+  const ipAddress = req.ip || req.connection?.remoteAddress || 'Unknown IP';
+
+  await Session.create({
+    user: user._id,
+    tokenHash,
+    userAgent,
+    ipAddress,
+    expiresAt
+  });
+
+  // Update last login timestamp
+  user.lastLoginAt = new Date();
+  await user.save({ validateBeforeSave: false });
+
+  return {
+    accessToken,
+    refreshToken: rawRefreshToken
+  };
 };
 
 // @desc    Register a new user with email & password
@@ -59,18 +90,20 @@ export const register = async (req, res, next) => {
       isEmailVerified: false
     });
 
-    const token = generateToken(user._id);
+    const tokens = await createAuthSession(user, req);
 
     res.status(201).json({
       success: true,
-      token,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
         theme: user.theme,
         avatar: user.avatar,
-        authProviders: user.authProviders
+        authProviders: user.authProviders,
+        isEmailVerified: user.isEmailVerified
       }
     });
   } catch (error) {
@@ -78,7 +111,7 @@ export const register = async (req, res, next) => {
   }
 };
 
-// @desc    Authenticate user with password & get token
+// @desc    Authenticate user with password & get tokens
 // @route   POST /api/auth/login
 // @access  Public
 export const login = async (req, res, next) => {
@@ -117,18 +150,20 @@ export const login = async (req, res, next) => {
       });
     }
 
-    const token = generateToken(user._id);
+    const tokens = await createAuthSession(user, req);
 
     res.status(200).json({
       success: true,
-      token,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
         theme: user.theme,
         avatar: user.avatar,
-        authProviders: user.authProviders
+        authProviders: user.authProviders,
+        isEmailVerified: user.isEmailVerified
       }
     });
   } catch (error) {
@@ -150,7 +185,6 @@ export const googleAuth = async (req, res, next) => {
       });
     }
 
-    // Securely verify token with Google's servers
     const googleProfile = await verifyGoogleIdToken(credential);
     const { googleId, email, name, picture, emailVerified } = googleProfile;
 
@@ -161,15 +195,12 @@ export const googleAuth = async (req, res, next) => {
       });
     }
 
-    // 1. Check if user already exists with this Google ID
     let user = await User.findOne({ googleId });
 
     if (!user) {
-      // 2. Check if a user with this email already exists
       user = await User.findOne({ email });
 
       if (user) {
-        // Safe account linking: Google has verified email ownership
         user.googleId = googleId;
         if (!user.authProviders.includes('google')) {
           user.authProviders.push('google');
@@ -180,7 +211,6 @@ export const googleAuth = async (req, res, next) => {
         user.isEmailVerified = true;
         await user.save();
       } else {
-        // 3. Create a brand new Google user
         user = await User.create({
           name: name || email.split('@')[0],
           email,
@@ -192,18 +222,20 @@ export const googleAuth = async (req, res, next) => {
       }
     }
 
-    const token = generateToken(user._id);
+    const tokens = await createAuthSession(user, req);
 
     res.status(200).json({
       success: true,
-      token,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
         theme: user.theme,
         avatar: user.avatar,
-        authProviders: user.authProviders
+        authProviders: user.authProviders,
+        isEmailVerified: user.isEmailVerified
       }
     });
   } catch (error) {
@@ -248,17 +280,16 @@ export const requestEmailOtp = async (req, res, next) => {
       });
     }
 
-    // Invalidate any existing unused login OTPs for this email
+    // Invalidate prior unused login OTPs
     await Otp.updateMany(
       { email: cleanEmail, purpose: 'login', isUsed: false },
       { $set: { isUsed: true } }
     );
 
-    // Generate cryptographically secure 6-digit OTP
+    // Cryptographically secure 6-digit OTP
     const plainOtp = crypto.randomInt(100000, 1000000).toString();
-    const otpHash = hashOtp(plainOtp);
-
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const otpHash = hashSecret(plainOtp);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
     await Otp.create({
       email: cleanEmail,
@@ -268,11 +299,10 @@ export const requestEmailOtp = async (req, res, next) => {
       lastSentAt: new Date()
     });
 
-    // Check if user exists to personalize email
     const existingUser = await User.findOne({ email: cleanEmail });
 
-    // Send email (never expose plain OTP in API response or logs)
-    const isMock = req.headers['x-test-mode'] === 'true' || process.env.MOCK_EMAIL === 'true';
+    // Send email (test mode header honored in non-production)
+    const isMock = req.headers['x-test-mode'] === 'true' && !config.isProd;
     const emailResult = await sendOtpEmail({
       to: cleanEmail,
       name: existingUser?.name || '',
@@ -287,14 +317,13 @@ export const requestEmailOtp = async (req, res, next) => {
         return res.status(503).json({
           success: false,
           code: 'SMTP_NOT_CONFIGURED',
-          message:
-            'Email delivery is not configured on the server. Please set SMTP_HOST, SMTP_USER, and SMTP_PASS in server/.env to receive verification codes.'
+          message: 'Email delivery is not configured on the server. Please configure SMTP in server/.env.'
         });
       }
       return res.status(502).json({
         success: false,
         code: 'EMAIL_SEND_FAILED',
-        message: emailResult.message || 'Unable to deliver verification code. Please check server email settings.'
+        message: 'Unable to deliver verification code. Please check email settings.'
       });
     }
 
@@ -331,7 +360,6 @@ export const verifyEmailOtp = async (req, res, next) => {
       });
     }
 
-    // Find active OTP record
     const otpDoc = await Otp.findOne({
       email: cleanEmail,
       purpose: 'login',
@@ -345,7 +373,6 @@ export const verifyEmailOtp = async (req, res, next) => {
       });
     }
 
-    // Check expiration
     if (new Date() > otpDoc.expiresAt) {
       otpDoc.isUsed = true;
       await otpDoc.save();
@@ -355,7 +382,6 @@ export const verifyEmailOtp = async (req, res, next) => {
       });
     }
 
-    // Check attempts limit (max 5)
     if (otpDoc.attempts >= 5) {
       otpDoc.isUsed = true;
       await otpDoc.save();
@@ -365,8 +391,7 @@ export const verifyEmailOtp = async (req, res, next) => {
       });
     }
 
-    // Validate hash
-    const enteredHash = hashOtp(cleanOtp);
+    const enteredHash = hashSecret(cleanOtp);
     if (enteredHash !== otpDoc.otpHash) {
       otpDoc.attempts += 1;
       await otpDoc.save();
@@ -377,11 +402,10 @@ export const verifyEmailOtp = async (req, res, next) => {
       });
     }
 
-    // Mark OTP as used immediately (single-use)
+    // Mark as used immediately (single-use)
     otpDoc.isUsed = true;
     await otpDoc.save();
 
-    // Find or create user
     let user = await User.findOne({ email: cleanEmail });
 
     if (user) {
@@ -399,19 +423,21 @@ export const verifyEmailOtp = async (req, res, next) => {
       });
     }
 
-    const token = generateToken(user._id);
+    const tokens = await createAuthSession(user, req);
 
     res.status(200).json({
       success: true,
       message: 'Signed in successfully',
-      token,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
         theme: user.theme,
         avatar: user.avatar,
-        authProviders: user.authProviders
+        authProviders: user.authProviders,
+        isEmailVerified: user.isEmailVerified
       }
     });
   } catch (error) {
@@ -435,30 +461,20 @@ export const forgotPassword = async (req, res, next) => {
 
     const cleanEmail = email.toLowerCase().trim();
 
-    // Constant user enumeration defense: always respond with identical generic message
+    // Generic response to avoid user enumeration
     const genericResponse = {
       success: true,
       message: 'If an account exists for this email, you will receive a password reset code shortly.'
     };
 
-    const isMock = req.headers['x-test-mode'] === 'true' || process.env.MOCK_EMAIL === 'true';
-
-    // Check if SMTP is configured before proceeding (unless in automated test mode)
-    if (!isSmtpConfigured() && !isMock) {
-      return res.status(503).json({
-        success: false,
-        code: 'SMTP_NOT_CONFIGURED',
-        message:
-          'Email delivery is not configured on the server. Please set SMTP_HOST, SMTP_USER, and SMTP_PASS in server/.env to receive password reset codes.'
-      });
-    }
-
+    const isMock = req.headers['x-test-mode'] === 'true' && !config.isProd;
     const user = await User.findOne({ email: cleanEmail });
+
     if (!user) {
       return res.status(200).json(genericResponse);
     }
 
-    // Check cooldown: 60 seconds
+    // Cooldown check (60 seconds)
     const recentOtp = await Otp.findOne({
       email: cleanEmail,
       purpose: 'reset_password',
@@ -476,14 +492,13 @@ export const forgotPassword = async (req, res, next) => {
       });
     }
 
-    // Invalidate prior unused reset OTPs
     await Otp.updateMany(
       { email: cleanEmail, purpose: 'reset_password', isUsed: false },
       { $set: { isUsed: true } }
     );
 
     const plainOtp = crypto.randomInt(100000, 1000000).toString();
-    const otpHash = hashOtp(plainOtp);
+    const otpHash = hashSecret(plainOtp);
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
     await Otp.create({
@@ -503,11 +518,11 @@ export const forgotPassword = async (req, res, next) => {
       isMockMode: isMock
     });
 
-    if (!emailResult.delivered) {
+    if (!emailResult.delivered && !isMock) {
       return res.status(502).json({
         success: false,
         code: 'EMAIL_SEND_FAILED',
-        message: emailResult.message || 'Failed to deliver password reset code.'
+        message: 'Failed to deliver password reset code.'
       });
     }
 
@@ -572,7 +587,7 @@ export const verifyResetOtp = async (req, res, next) => {
       });
     }
 
-    const enteredHash = hashOtp(cleanOtp);
+    const enteredHash = hashSecret(cleanOtp);
     if (enteredHash !== otpDoc.otpHash) {
       otpDoc.attempts += 1;
       await otpDoc.save();
@@ -583,15 +598,14 @@ export const verifyResetOtp = async (req, res, next) => {
       });
     }
 
-    // Invalidate OTP
     otpDoc.isUsed = true;
     await otpDoc.save();
 
-    // Create a secure short-lived reset authorization token (10 minutes)
+    // 10-minute short-lived reset token
     const resetToken = jwt.sign(
       { email: cleanEmail, resetAllowed: true },
-      process.env.JWT_SECRET || 'super_secret_jwt_key_task_management_2026_modern',
-      { expiresIn: '10m' }
+      config.jwt.secret,
+      { expiresIn: '10m', algorithm: 'HS256' }
     );
 
     res.status(200).json({
@@ -627,13 +641,9 @@ export const resetPassword = async (req, res, next) => {
 
     const cleanEmail = email.toLowerCase().trim();
 
-    // Verify reset token
     let decoded;
     try {
-      decoded = jwt.verify(
-        resetToken,
-        process.env.JWT_SECRET || 'super_secret_jwt_key_task_management_2026_modern'
-      );
+      decoded = jwt.verify(resetToken, config.jwt.secret, { algorithms: ['HS256'] });
     } catch (err) {
       return res.status(401).json({
         success: false,
@@ -656,16 +666,192 @@ export const resetPassword = async (req, res, next) => {
       });
     }
 
-    // Update password
+    // Update password and track passwordChangedAt
     user.password = newPassword;
+    user.passwordChangedAt = new Date();
     if (!user.authProviders.includes('local')) {
       user.authProviders.push('local');
     }
     await user.save();
 
+    // Revoke all existing sessions for this user on password reset
+    await Session.updateMany(
+      { user: user._id, isRevoked: false },
+      { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: 'PASSWORD_RESET' } }
+    );
+
     res.status(200).json({
       success: true,
-      message: 'Password reset successfully! You can now log in with your new password.'
+      message: 'Password reset successfully! All previous sessions have been signed out. Please log in with your new password.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Exchange refresh token for fresh access token & rotated refresh token
+// @route   POST /api/auth/refresh
+// @access  Public
+export const refreshToken = async (req, res, next) => {
+  try {
+    const rawRefreshToken = req.body.refreshToken || req.headers['x-refresh-token'];
+
+    if (!rawRefreshToken) {
+      return res.status(401).json({
+        success: false,
+        code: 'REFRESH_TOKEN_REQUIRED',
+        message: 'Refresh token is required'
+      });
+    }
+
+    const tokenHash = hashSecret(rawRefreshToken);
+    const session = await Session.findOne({ tokenHash });
+
+    if (!session) {
+      return res.status(401).json({
+        success: false,
+        code: 'INVALID_SESSION',
+        message: 'Session not found or invalid refresh token'
+      });
+    }
+
+    // Reuse Detection: if session was already revoked and has a replacement, someone is replaying an old token!
+    if (session.isRevoked) {
+      if (session.replacedByTokenHash) {
+        // Revoke all sessions for this user immediately (token theft detected!)
+        console.warn(`[Security Alert] Refresh token reuse detected for user ${session.user}. Revoking all sessions.`);
+        await Session.updateMany(
+          { user: session.user, isRevoked: false },
+          { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: 'TOKEN_REUSE_DETECTED' } }
+        );
+      }
+      return res.status(401).json({
+        success: false,
+        code: 'SESSION_REVOKED',
+        message: 'This session has been revoked. Please sign in again.'
+      });
+    }
+
+    // Check expiration
+    if (new Date() > session.expiresAt) {
+      session.isRevoked = true;
+      session.revokedAt = new Date();
+      session.revokedReason = 'EXPIRED';
+      await session.save();
+      return res.status(401).json({
+        success: false,
+        code: 'SESSION_EXPIRED',
+        message: 'Session has expired. Please sign in again.'
+      });
+    }
+
+    const user = await User.findById(session.user);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        code: 'USER_NOT_FOUND',
+        message: 'User belonging to this session no longer exists'
+      });
+    }
+
+    // Rotate refresh token: generate new token and hash
+    const newRawRefreshToken = crypto.randomBytes(48).toString('hex');
+    const newTokenHash = hashSecret(newRawRefreshToken);
+
+    // Invalidate old session and link to new one
+    session.isRevoked = true;
+    session.revokedAt = new Date();
+    session.revokedReason = 'ROTATED';
+    session.replacedByTokenHash = newTokenHash;
+    await session.save();
+
+    // Create new session
+    const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await Session.create({
+      user: user._id,
+      tokenHash: newTokenHash,
+      userAgent: req.headers['user-agent'] || session.userAgent,
+      ipAddress: req.ip || session.ipAddress,
+      expiresAt: newExpiresAt
+    });
+
+    // Generate new access token
+    const newAccessToken = jwt.sign(
+      { id: user._id },
+      config.jwt.secret,
+      { expiresIn: config.jwt.accessExpiresIn, algorithm: 'HS256' }
+    );
+
+    res.status(200).json({
+      success: true,
+      token: newAccessToken,
+      refreshToken: newRawRefreshToken
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Logout current session
+// @route   POST /api/auth/logout
+// @access  Public / Private
+export const logout = async (req, res, next) => {
+  try {
+    const rawRefreshToken = req.body.refreshToken || req.headers['x-refresh-token'];
+
+    if (rawRefreshToken) {
+      const tokenHash = hashSecret(rawRefreshToken);
+      await Session.findOneAndUpdate(
+        { tokenHash, isRevoked: false },
+        { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: 'LOGOUT' } }
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Revoke all active sessions for current user (Logout from all devices)
+// @route   POST /api/auth/logout-all
+// @access  Private
+export const logoutAll = async (req, res, next) => {
+  try {
+    await Session.updateMany(
+      { user: req.user._id, isRevoked: false },
+      { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: 'LOGOUT_ALL' } }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'All active sessions have been revoked. Please log in again.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get active sessions for user
+// @route   GET /api/auth/sessions
+// @access  Private
+export const getActiveSessions = async (req, res, next) => {
+  try {
+    const sessions = await Session.find({
+      user: req.user._id,
+      isRevoked: false,
+      expiresAt: { $gt: new Date() }
+    })
+      .select('-tokenHash -replacedByTokenHash')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: sessions.length,
+      sessions
     });
   } catch (error) {
     next(error);
@@ -685,7 +871,8 @@ export const getMe = async (req, res) => {
       theme: req.user.theme,
       avatar: req.user.avatar,
       authProviders: req.user.authProviders,
-      isEmailVerified: req.user.isEmailVerified
+      isEmailVerified: req.user.isEmailVerified,
+      currentOrganization: req.user.currentOrganization
     }
   });
 };
@@ -696,7 +883,6 @@ export const getMe = async (req, res) => {
 export const updateProfile = async (req, res, next) => {
   try {
     const { name, theme, currentPassword, newPassword } = req.body;
-
     const user = await User.findById(req.user._id).select('+password');
 
     if (!user) {
@@ -714,8 +900,8 @@ export const updateProfile = async (req, res, next) => {
       user.theme = theme;
     }
 
+    let passwordChanged = false;
     if (newPassword) {
-      // If user had a password previously, require current password
       if (user.password) {
         if (!currentPassword) {
           return res.status(400).json({
@@ -741,6 +927,8 @@ export const updateProfile = async (req, res, next) => {
       }
 
       user.password = newPassword;
+      user.passwordChangedAt = new Date();
+      passwordChanged = true;
       if (!user.authProviders.includes('local')) {
         user.authProviders.push('local');
       }
@@ -748,9 +936,18 @@ export const updateProfile = async (req, res, next) => {
 
     await user.save();
 
+    // If password changed, revoke other sessions
+    if (passwordChanged) {
+      await Session.updateMany(
+        { user: user._id, isRevoked: false },
+        { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: 'PASSWORD_CHANGE' } }
+      );
+    }
+
     res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
+      passwordChanged,
       user: {
         id: user._id,
         name: user.name,

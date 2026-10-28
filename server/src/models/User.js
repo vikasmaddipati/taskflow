@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema(
       trim: true,
       lowercase: true,
       match: [
-        /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
+        /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/,
         'Please provide a valid email address'
       ]
     },
@@ -24,10 +24,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       minlength: [6, 'Password must be at least 6 characters'],
       select: false,
-      // Required only if user does not use Google/OAuth or registers with local password
       required: function () {
         return !this.googleId && (!this.authProviders || this.authProviders.includes('local'));
       }
+    },
+    passwordChangedAt: {
+      type: Date,
+      default: null
     },
     googleId: {
       type: String,
@@ -51,6 +54,15 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ['light', 'dark'],
       default: 'light'
+    },
+    currentOrganization: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      default: null
+    },
+    lastLoginAt: {
+      type: Date,
+      default: null
     }
   },
   {
@@ -71,6 +83,15 @@ userSchema.pre('save', async function () {
 userSchema.methods.matchPassword = async function (enteredPassword) {
   if (!this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// Check if user changed password after token was issued
+userSchema.methods.changedPasswordAfter = function (JWTTimestamp) {
+  if (this.passwordChangedAt) {
+    const changedTimestamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
+    return JWTTimestamp < changedTimestamp;
+  }
+  return false;
 };
 
 // Clean object representation
