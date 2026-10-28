@@ -13,7 +13,6 @@ const getBaseURL = () => {
 
   // Running inside Capacitor native container without custom URL: default to production API or window origin
   if (typeof window !== 'undefined' && (window.Capacitor || window.location.protocol === 'capacitor:')) {
-    // Falls back to safe localhost during dev or configured staging/prod URL
     return 'http://10.0.2.2:5000/api'; // Standard Android Emulator loopback host
   }
 
@@ -22,12 +21,15 @@ const getBaseURL = () => {
 
 const api = axios.create({
   baseURL: getBaseURL(),
+  withCredentials: true, // Automatically transmits HttpOnly cookies
+  xsrfCookieName: 'XSRF-TOKEN',
+  xsrfHeaderName: 'X-XSRF-TOKEN',
   headers: {
     'Content-Type': 'application/json'
   }
 });
 
-// Flag and queue for silent token refresh
+// Flag and queue for silent session refresh
 let isRefreshing = false;
 let failedQueue = [];
 
@@ -42,13 +44,18 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
-// Request interceptor: attach Bearer token, timezone, and active organization
+// Request interceptor: attach CSRF header, timezone, active org & workspace
 api.interceptors.request.use(
   (config) => {
     config.baseURL = getBaseURL();
-    const token = localStorage.getItem('tm_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    config.withCredentials = true;
+
+    // For native Android apps (Capacitor), check if mobile token is stored
+    if (typeof window !== 'undefined' && window.Capacitor) {
+      const mobileToken = localStorage.getItem('tm_mobile_token');
+      if (mobileToken) {
+        config.headers.Authorization = `Bearer ${mobileToken}`;
+      }
     }
 
     // Attach user local IANA timezone (e.g., 'America/Los_Angeles', 'Asia/Kolkata')
@@ -70,12 +77,20 @@ api.interceptors.request.use(
       config.headers['x-workspace-id'] = wsId;
     }
 
+    // Double Submit Cookie CSRF defense: extract XSRF-TOKEN cookie and pass in header
+    if (typeof document !== 'undefined' && ['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase())) {
+      const match = document.cookie.match(/(^|; )XSRF-TOKEN=([^;]+)/);
+      if (match && match[2]) {
+        config.headers['X-XSRF-TOKEN'] = decodeURIComponent(match[2]);
+      }
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Response interceptor: handle 401 and silent refresh rotation
+// Response interceptor: handle 401 and silent refresh rotation via HttpOnly cookies
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -85,16 +100,13 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // If request was already to refresh or logout, don't attempt loop
-    if (originalRequest.url?.includes('/auth/refresh') || originalRequest.url?.includes('/auth/login')) {
-      return Promise.reject(error);
-    }
-
-    const refreshToken = localStorage.getItem('tm_refresh_token');
-    if (!refreshToken) {
-      localStorage.removeItem('tm_token');
-      localStorage.removeItem('tm_refresh_token');
-      localStorage.removeItem('tm_user');
+    // If request was already to refresh or logout, don't attempt refresh loop
+    if (
+      originalRequest.url?.includes('/auth/refresh') ||
+      originalRequest.url?.includes('/auth/login') ||
+      originalRequest.url?.includes('/auth/logout') ||
+      originalRequest.url?.includes('/auth/me')
+    ) {
       return Promise.reject(error);
     }
 
@@ -102,10 +114,7 @@ api.interceptors.response.use(
       return new Promise((resolve, reject) => {
         failedQueue.push({ resolve, reject });
       })
-        .then((token) => {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-          return api(originalRequest);
-        })
+        .then(() => api(originalRequest))
         .catch((err) => Promise.reject(err));
     }
 
@@ -113,24 +122,20 @@ api.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      const res = await axios.post(`${getBaseURL()}/auth/refresh`, { refreshToken });
-      if (res.data.success && res.data.token) {
-        const newAccessToken = res.data.token;
-        const newRefreshToken = res.data.refreshToken;
+      // Exchange refresh cookie for a fresh session
+      const res = await axios.post(
+        `${getBaseURL()}/auth/refresh`,
+        {},
+        { withCredentials: true }
+      );
 
-        localStorage.setItem('tm_token', newAccessToken);
-        if (newRefreshToken) {
-          localStorage.setItem('tm_refresh_token', newRefreshToken);
-        }
-
-        api.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`;
-        processQueue(null, newAccessToken);
-
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+      if (res.data?.success) {
+        processQueue(null);
         return api(originalRequest);
       }
     } catch (refreshErr) {
       processQueue(refreshErr, null);
+      // Clean up any legacy storage artifacts
       localStorage.removeItem('tm_token');
       localStorage.removeItem('tm_refresh_token');
       localStorage.removeItem('tm_user');

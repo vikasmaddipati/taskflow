@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import mongoose from 'mongoose';
 import connectDB from './config/db.js';
 import { validateEnv, config } from './config/env.js';
@@ -13,7 +14,7 @@ import teamRoutes from './routes/teamRoutes.js';
 import { handleRazorpayWebhook } from './controllers/webhookController.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 
-// Validate environment variables on startup
+// Validate environment variables on startup (strict fail-fast)
 validateEnv();
 
 // Connect to MongoDB
@@ -21,32 +22,101 @@ connectDB();
 
 const app = express();
 
-// Security Headers via Helmet
+// Trust reverse proxy if running behind TLS termination proxy in production
+if (config.isProd) {
+  app.set('trust proxy', 1);
+}
+
+// Enhanced Security Headers via Helmet
 app.use(
   helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          'https://accounts.google.com/gsi/client',
+          'https://checkout.razorpay.com'
+        ],
+        frameSrc: [
+          "'self'",
+          'https://accounts.google.com/gsi/',
+          'https://api.razorpay.com'
+        ],
+        connectSrc: [
+          "'self'",
+          'https://accounts.google.com/gsi/',
+          'https://api.razorpay.com',
+          'https://lumberjack.razorpay.com',
+          ...config.cors.allowedOrigins
+        ],
+        imgSrc: [
+          "'self'",
+          'data:',
+          'blob:',
+          'https://*.googleusercontent.com',
+          'https://*.razorpay.com'
+        ],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: config.isProd ? [] : null
+      }
+    },
+    crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
-    contentSecurityPolicy: false // Vite frontend serves its own assets
+    frameguard: { action: 'sameorigin' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    hsts: config.isProd
+      ? {
+          maxAge: 31536000,
+          includeSubDomains: true,
+          preload: true
+        }
+      : false
   })
 );
 
+// Cookie Parser Middleware for HttpOnly Cookie Session Management
+app.use(cookieParser());
+
 // Explicit CORS Configuration with origin allowlist
 const allowedOrigins = config.cors.allowedOrigins;
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) !== -1 || (!config.isProd && origin.startsWith('http://localhost:'))) {
-        callback(null, true);
-      } else {
-        callback(new Error(`CORS policy does not allow access from origin ${origin}`));
-      }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-timezone', 'x-organization-id', 'x-workspace-id', 'x-razorpay-signature']
-  })
-);
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow non-browser requests with no origin (e.g. mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    if (
+      allowedOrigins.includes(origin) ||
+      (!config.isProd && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')))
+    ) {
+      callback(null, true);
+    } else {
+      // Rejects unapproved origins gracefully according to CORS spec without crashing
+      callback(null, false);
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'x-timezone',
+    'x-organization-id',
+    'x-workspace-id',
+    'x-razorpay-signature',
+    'x-razorpay-event-id',
+    'x-test-mode',
+    'x-csrf-token',
+    'x-xsrf-token',
+    'X-XSRF-TOKEN'
+  ],
+  exposedHeaders: ['X-XSRF-TOKEN', 'x-csrf-token'],
+  maxAge: 86400 // 24 hours preflight caching
+};
+
+app.use(cors(corsOptions));
 
 // Express Parsers with rawBody retention for webhook signature verification
 app.use(
@@ -109,23 +179,13 @@ const handleGracefulShutdown = (signal) => {
       console.log('[MongoDB] Connection closed smoothly');
       process.exit(0);
     } catch (err) {
-      console.error('[MongoDB Error during shutdown]', err);
+      console.error('[MongoDB] Error during connection close:', err.message);
       process.exit(1);
     }
   });
-
-  // Force close after 10 seconds if hanging
-  setTimeout(() => {
-    console.error('[Server] Could not close connections in time, forcefully shutting down');
-    process.exit(1);
-  }, 10000);
 };
 
 process.on('SIGTERM', () => handleGracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => handleGracefulShutdown('SIGINT'));
-
-process.on('unhandledRejection', (err) => {
-  console.error(`[Unhandled Rejection] ${err?.message || err}`);
-});
 
 export default app;

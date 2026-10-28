@@ -8,32 +8,108 @@ import Membership from '../models/Membership.js';
 import Workspace from '../models/Workspace.js';
 import { sendOtpEmail } from '../services/emailService.js';
 import { verifyGoogleIdToken } from '../services/googleAuthService.js';
-import { config } from '../config/env.js';
+import { config, getValidatedJwtSecret } from '../config/env.js';
+import { isValidEmail, normalizeEmail } from '../utils/validators.js';
 
-// Helper to hash with sha256
+// Helper to hash secrets with sha256
 const hashSecret = (value) => {
   return crypto.createHash('sha256').update(String(value).trim()).digest('hex');
 };
 
-// Helper to generate access & refresh token pair
+/**
+ * Attaches secure HttpOnly cookies and CSRF token for browser sessions
+ */
+export const setAuthCookies = (res, accessToken, refreshToken, csrfToken) => {
+  const isProd = config.isProd;
+
+  // 1. Short-lived Access Token in HttpOnly cookie
+  res.cookie('tm_access_token', accessToken, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'None' : 'Lax',
+    path: '/',
+    maxAge: 15 * 60 * 1000 // 15 minutes
+  });
+
+  // 2. Long-lived Refresh Token in HttpOnly cookie scoped to auth routes
+  if (refreshToken) {
+    res.cookie('tm_refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'None' : 'Lax',
+      path: '/api/auth',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+  }
+
+  // 3. Readable Anti-CSRF Token for client Axios header attachment
+  if (csrfToken) {
+    res.cookie('XSRF-TOKEN', csrfToken, {
+      httpOnly: false,
+      secure: isProd,
+      sameSite: isProd ? 'None' : 'Lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+  }
+};
+
+/**
+ * Clears all authentication and CSRF cookies on logout or session invalidation
+ */
+export const clearAuthCookies = (res) => {
+  const isProd = config.isProd;
+  res.clearCookie('tm_access_token', {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'None' : 'Lax',
+    path: '/'
+  });
+  res.clearCookie('tm_refresh_token', {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'None' : 'Lax',
+    path: '/api/auth'
+  });
+  res.clearCookie('XSRF-TOKEN', {
+    httpOnly: false,
+    secure: isProd,
+    sameSite: isProd ? 'None' : 'Lax',
+    path: '/'
+  });
+};
+
+/**
+ * Creates authenticated session, signs JWT with validated secret, and generates refresh/csrf tokens
+ */
 export const createAuthSession = async (user, req) => {
-  // 1. Generate short-lived access token (default 15m)
+  const jwtSecret = getValidatedJwtSecret();
+
+  // 1. Generate short-lived access token with strict claims, issuer, and audience
+  const signOptions = {
+    expiresIn: config.jwt.accessExpiresIn,
+    algorithm: 'HS256'
+  };
+  if (config.jwt.issuer) signOptions.issuer = config.jwt.issuer;
+  if (config.jwt.audience) signOptions.audience = config.jwt.audience;
+
   const accessToken = jwt.sign(
-    { id: user._id },
-    config.jwt.secret,
     {
-      expiresIn: config.jwt.accessExpiresIn,
-      algorithm: 'HS256'
-    }
+      id: user._id.toString(),
+      type: 'access'
+    },
+    jwtSecret,
+    signOptions
   );
 
   // 2. Generate cryptographically strong random refresh token (opaque string)
   const rawRefreshToken = crypto.randomBytes(48).toString('hex');
   const tokenHash = hashSecret(rawRefreshToken);
 
-  // 7 days expiration for refresh token
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  // 3. Generate Anti-CSRF token
+  const csrfToken = crypto.randomBytes(32).toString('hex');
 
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const userAgent = req.headers['user-agent'] || 'Unknown client';
   const ipAddress = req.ip || req.connection?.remoteAddress || 'Unknown IP';
 
@@ -51,7 +127,8 @@ export const createAuthSession = async (user, req) => {
 
   return {
     accessToken,
-    refreshToken: rawRefreshToken
+    refreshToken: rawRefreshToken,
+    csrfToken
   };
 };
 
@@ -100,6 +177,13 @@ export const register = async (req, res, next) => {
       });
     }
 
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address with a valid top-level domain'
+      });
+    }
+
     if (password.length < 6) {
       return res.status(400).json({
         success: false,
@@ -107,7 +191,7 @@ export const register = async (req, res, next) => {
       });
     }
 
-    const cleanEmail = email.toLowerCase().trim();
+    const cleanEmail = normalizeEmail(email);
     const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
       return res.status(400).json({
@@ -124,15 +208,43 @@ export const register = async (req, res, next) => {
       isEmailVerified: false
     });
 
+    // Generate email verification OTP automatically
+    const plainOtp = crypto.randomInt(100000, 1000000).toString();
+    const otpHash = hashSecret(plainOtp);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins for email verification
+
+    await Otp.create({
+      email: cleanEmail,
+      otpHash,
+      purpose: 'email_verification',
+      expiresAt,
+      lastSentAt: new Date()
+    });
+
+    const isMock = req.headers['x-test-mode'] === 'true' && !config.isProd;
+    await sendOtpEmail({
+      to: cleanEmail,
+      name: user.name,
+      otp: plainOtp,
+      purpose: 'login',
+      expiresMinutes: 15,
+      isMockMode: isMock
+    }).catch((err) => console.warn('[Email Warning] Verification email dispatch deferred:', err.message));
+
     const [tokens, organization] = await Promise.all([
       createAuthSession(user, req),
       ensureUserOrganization(user)
     ]);
 
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken, tokens.csrfToken);
+
     res.status(201).json({
       success: true,
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
+      csrfToken: tokens.csrfToken,
+      requiresVerification: true,
+      message: 'Account created successfully. Please verify your email address to unlock all features.',
       organization,
       user: {
         id: user._id,
@@ -164,7 +276,7 @@ export const login = async (req, res, next) => {
       });
     }
 
-    const cleanEmail = email.toLowerCase().trim();
+    const cleanEmail = normalizeEmail(email);
     const user = await User.findOne({ email: cleanEmail }).select('+password');
 
     if (!user) {
@@ -194,10 +306,14 @@ export const login = async (req, res, next) => {
       ensureUserOrganization(user)
     ]);
 
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken, tokens.csrfToken);
+
     res.status(200).json({
       success: true,
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
+      csrfToken: tokens.csrfToken,
+      requiresVerification: !user.isEmailVerified,
       organization,
       user: {
         id: user._id,
@@ -239,10 +355,11 @@ export const googleAuth = async (req, res, next) => {
       });
     }
 
+    const cleanEmail = normalizeEmail(email);
     let user = await User.findOne({ googleId });
 
     if (!user) {
-      user = await User.findOne({ email });
+      user = await User.findOne({ email: cleanEmail });
 
       if (user) {
         user.googleId = googleId;
@@ -256,8 +373,8 @@ export const googleAuth = async (req, res, next) => {
         await user.save();
       } else {
         user = await User.create({
-          name: name || email.split('@')[0],
-          email,
+          name: name || cleanEmail.split('@')[0],
+          email: cleanEmail,
           googleId,
           avatar: picture,
           authProviders: ['google'],
@@ -266,12 +383,19 @@ export const googleAuth = async (req, res, next) => {
       }
     }
 
-    const tokens = await createAuthSession(user, req);
+    const [tokens, organization] = await Promise.all([
+      createAuthSession(user, req),
+      ensureUserOrganization(user)
+    ]);
+
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken, tokens.csrfToken);
 
     res.status(200).json({
       success: true,
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
+      csrfToken: tokens.csrfToken,
+      organization,
       user: {
         id: user._id,
         name: user.name,
@@ -279,7 +403,8 @@ export const googleAuth = async (req, res, next) => {
         theme: user.theme,
         avatar: user.avatar,
         authProviders: user.authProviders,
-        isEmailVerified: user.isEmailVerified
+        isEmailVerified: user.isEmailVerified,
+        currentOrganization: organization._id
       }
     });
   } catch (error) {
@@ -297,14 +422,14 @@ export const requestEmailOtp = async (req, res, next) => {
   try {
     const { email } = req.body;
 
-    if (!email || !email.includes('@')) {
+    if (!isValidEmail(email)) {
       return res.status(400).json({
         success: false,
         message: 'Please provide a valid email address'
       });
     }
 
-    const cleanEmail = email.toLowerCase().trim();
+    const cleanEmail = normalizeEmail(email);
 
     // Check resend cooldown: 60 seconds
     const recentOtp = await Otp.findOne({
@@ -394,7 +519,7 @@ export const verifyEmailOtp = async (req, res, next) => {
       });
     }
 
-    const cleanEmail = email.toLowerCase().trim();
+    const cleanEmail = normalizeEmail(email);
     const cleanOtp = String(otp).trim();
 
     if (cleanOtp.length !== 6) {
@@ -467,13 +592,20 @@ export const verifyEmailOtp = async (req, res, next) => {
       });
     }
 
-    const tokens = await createAuthSession(user, req);
+    const [tokens, organization] = await Promise.all([
+      createAuthSession(user, req),
+      ensureUserOrganization(user)
+    ]);
+
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken, tokens.csrfToken);
 
     res.status(200).json({
       success: true,
       message: 'Signed in successfully',
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
+      csrfToken: tokens.csrfToken,
+      organization,
       user: {
         id: user._id,
         name: user.name,
@@ -481,8 +613,199 @@ export const verifyEmailOtp = async (req, res, next) => {
         theme: user.theme,
         avatar: user.avatar,
         authProviders: user.authProviders,
-        isEmailVerified: user.isEmailVerified
+        isEmailVerified: user.isEmailVerified,
+        currentOrganization: organization._id
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Verify Email using 6-digit OTP (Email Verification)
+// @route   POST /api/auth/verify-email
+// @access  Public / Private
+export const verifyEmail = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and verification code are required'
+      });
+    }
+
+    const cleanEmail = normalizeEmail(email);
+    const cleanOtp = String(otp).trim();
+
+    const otpDoc = await Otp.findOne({
+      email: cleanEmail,
+      purpose: 'email_verification',
+      isUsed: false
+    }).sort({ createdAt: -1 });
+
+    if (!otpDoc) {
+      return res.status(400).json({
+        success: false,
+        message: 'No active email verification code found. Please request a new code.'
+      });
+    }
+
+    if (new Date() > otpDoc.expiresAt) {
+      otpDoc.isUsed = true;
+      await otpDoc.save();
+      return res.status(400).json({
+        success: false,
+        message: 'Verification code has expired. Please request a new code.'
+      });
+    }
+
+    if (otpDoc.attempts >= 5) {
+      otpDoc.isUsed = true;
+      await otpDoc.save();
+      return res.status(400).json({
+        success: false,
+        message: 'Too many incorrect attempts. Please request a new code.'
+      });
+    }
+
+    const enteredHash = hashSecret(cleanOtp);
+    if (enteredHash !== otpDoc.otpHash) {
+      otpDoc.attempts += 1;
+      await otpDoc.save();
+      const remaining = 5 - otpDoc.attempts;
+      return res.status(400).json({
+        success: false,
+        message: `Invalid verification code. ${remaining > 0 ? remaining : 0} attempt(s) remaining.`
+      });
+    }
+
+    // Mark single-use
+    otpDoc.isUsed = true;
+    await otpDoc.save();
+
+    const user = await User.findOne({ email: cleanEmail });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User account not found'
+      });
+    }
+
+    user.isEmailVerified = true;
+    await user.save();
+
+    const [tokens, organization] = await Promise.all([
+      createAuthSession(user, req),
+      ensureUserOrganization(user)
+    ]);
+
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken, tokens.csrfToken);
+
+    res.status(200).json({
+      success: true,
+      message: 'Email verified successfully! Full account features unlocked.',
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      csrfToken: tokens.csrfToken,
+      organization,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        theme: user.theme,
+        avatar: user.avatar,
+        authProviders: user.authProviders,
+        isEmailVerified: user.isEmailVerified,
+        currentOrganization: organization._id
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Resend Email Verification Code
+// @route   POST /api/auth/resend-verification
+// @access  Public
+export const resendVerificationEmail = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address'
+      });
+    }
+
+    const cleanEmail = normalizeEmail(email);
+    const user = await User.findOne({ email: cleanEmail });
+
+    // Prevent account enumeration by returning generic response if not found
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: 'If an unverified account exists for this email, a new verification code has been sent.'
+      });
+    }
+
+    if (user.isEmailVerified) {
+      return res.status(400).json({
+        success: false,
+        message: 'This email is already verified. You can log in directly.'
+      });
+    }
+
+    // Cooldown check (60 seconds)
+    const recentOtp = await Otp.findOne({
+      email: cleanEmail,
+      purpose: 'email_verification',
+      isUsed: false,
+      lastSentAt: { $gt: new Date(Date.now() - 60 * 1000) }
+    });
+
+    if (recentOtp) {
+      const remainingSeconds = Math.ceil(
+        (recentOtp.lastSentAt.getTime() + 60 * 1000 - Date.now()) / 1000
+      );
+      return res.status(429).json({
+        success: false,
+        message: `Please wait ${remainingSeconds} seconds before requesting another code.`
+      });
+    }
+
+    await Otp.updateMany(
+      { email: cleanEmail, purpose: 'email_verification', isUsed: false },
+      { $set: { isUsed: true } }
+    );
+
+    const plainOtp = crypto.randomInt(100000, 1000000).toString();
+    const otpHash = hashSecret(plainOtp);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await Otp.create({
+      email: cleanEmail,
+      otpHash,
+      purpose: 'email_verification',
+      expiresAt,
+      lastSentAt: new Date()
+    });
+
+    const isMock = req.headers['x-test-mode'] === 'true' && !config.isProd;
+    await sendOtpEmail({
+      to: cleanEmail,
+      name: user.name,
+      otp: plainOtp,
+      purpose: 'login',
+      expiresMinutes: 15,
+      isMockMode: isMock
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'A new 6-digit email verification code has been sent.'
     });
   } catch (error) {
     next(error);
@@ -496,14 +819,14 @@ export const forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
 
-    if (!email || !email.includes('@')) {
+    if (!isValidEmail(email)) {
       return res.status(400).json({
         success: false,
         message: 'Please provide a valid email address'
       });
     }
 
-    const cleanEmail = email.toLowerCase().trim();
+    const cleanEmail = normalizeEmail(email);
 
     // Generic response to avoid user enumeration
     const genericResponse = {
@@ -590,7 +913,7 @@ export const verifyResetOtp = async (req, res, next) => {
       });
     }
 
-    const cleanEmail = email.toLowerCase().trim();
+    const cleanEmail = normalizeEmail(email);
     const cleanOtp = String(otp).trim();
 
     if (cleanOtp.length !== 6) {
@@ -645,10 +968,12 @@ export const verifyResetOtp = async (req, res, next) => {
     otpDoc.isUsed = true;
     await otpDoc.save();
 
-    // 10-minute short-lived reset token
+    const jwtSecret = getValidatedJwtSecret();
+
+    // 10-minute short-lived reset token signed with validated secret
     const resetToken = jwt.sign(
-      { email: cleanEmail, resetAllowed: true },
-      config.jwt.secret,
+      { email: cleanEmail, resetAllowed: true, type: 'password_reset' },
+      jwtSecret,
       { expiresIn: '10m', algorithm: 'HS256' }
     );
 
@@ -683,11 +1008,12 @@ export const resetPassword = async (req, res, next) => {
       });
     }
 
-    const cleanEmail = email.toLowerCase().trim();
+    const cleanEmail = normalizeEmail(email);
+    const jwtSecret = getValidatedJwtSecret();
 
     let decoded;
     try {
-      decoded = jwt.verify(resetToken, config.jwt.secret, { algorithms: ['HS256'] });
+      decoded = jwt.verify(resetToken, jwtSecret, { algorithms: ['HS256'] });
     } catch (err) {
       return res.status(401).json({
         success: false,
@@ -724,6 +1050,8 @@ export const resetPassword = async (req, res, next) => {
       { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: 'PASSWORD_RESET' } }
     );
 
+    clearAuthCookies(res);
+
     res.status(200).json({
       success: true,
       message: 'Password reset successfully! All previous sessions have been signed out. Please log in with your new password.'
@@ -738,7 +1066,10 @@ export const resetPassword = async (req, res, next) => {
 // @access  Public
 export const refreshToken = async (req, res, next) => {
   try {
-    const rawRefreshToken = req.body.refreshToken || req.headers['x-refresh-token'];
+    const rawRefreshToken =
+      req.cookies?.tm_refresh_token ||
+      req.body.refreshToken ||
+      req.headers['x-refresh-token'];
 
     if (!rawRefreshToken) {
       return res.status(401).json({
@@ -762,12 +1093,12 @@ export const refreshToken = async (req, res, next) => {
     // Reuse Detection: if session was already revoked and has a replacement, someone is replaying an old token!
     if (session.isRevoked) {
       if (session.replacedByTokenHash) {
-        // Revoke all sessions for this user immediately (token theft detected!)
         console.warn(`[Security Alert] Refresh token reuse detected for user ${session.user}. Revoking all sessions.`);
         await Session.updateMany(
           { user: session.user, isRevoked: false },
           { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: 'TOKEN_REUSE_DETECTED' } }
         );
+        clearAuthCookies(res);
         return res.status(403).json({
           success: false,
           code: 'TOKEN_REUSE_DETECTED',
@@ -787,6 +1118,7 @@ export const refreshToken = async (req, res, next) => {
       session.revokedAt = new Date();
       session.revokedReason = 'EXPIRED';
       await session.save();
+      clearAuthCookies(res);
       return res.status(401).json({
         success: false,
         code: 'SESSION_EXPIRED',
@@ -824,17 +1156,28 @@ export const refreshToken = async (req, res, next) => {
       expiresAt: newExpiresAt
     });
 
-    // Generate new access token
+    const jwtSecret = getValidatedJwtSecret();
+    const signOptions = {
+      expiresIn: config.jwt.accessExpiresIn,
+      algorithm: 'HS256'
+    };
+    if (config.jwt.issuer) signOptions.issuer = config.jwt.issuer;
+    if (config.jwt.audience) signOptions.audience = config.jwt.audience;
+
     const newAccessToken = jwt.sign(
-      { id: user._id },
-      config.jwt.secret,
-      { expiresIn: config.jwt.accessExpiresIn, algorithm: 'HS256' }
+      { id: user._id.toString(), type: 'access' },
+      jwtSecret,
+      signOptions
     );
+
+    const csrfToken = crypto.randomBytes(32).toString('hex');
+    setAuthCookies(res, newAccessToken, newRawRefreshToken, csrfToken);
 
     res.status(200).json({
       success: true,
       token: newAccessToken,
-      refreshToken: newRawRefreshToken
+      refreshToken: newRawRefreshToken,
+      csrfToken
     });
   } catch (error) {
     next(error);
@@ -846,7 +1189,10 @@ export const refreshToken = async (req, res, next) => {
 // @access  Public / Private
 export const logout = async (req, res, next) => {
   try {
-    const rawRefreshToken = req.body.refreshToken || req.headers['x-refresh-token'];
+    const rawRefreshToken =
+      req.cookies?.tm_refresh_token ||
+      req.body.refreshToken ||
+      req.headers['x-refresh-token'];
 
     if (rawRefreshToken) {
       const tokenHash = hashSecret(rawRefreshToken);
@@ -855,6 +1201,8 @@ export const logout = async (req, res, next) => {
         { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: 'LOGOUT' } }
       );
     }
+
+    clearAuthCookies(res);
 
     res.status(200).json({
       success: true,
@@ -874,6 +1222,8 @@ export const logoutAll = async (req, res, next) => {
       { user: req.user._id, isRevoked: false },
       { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: 'LOGOUT_ALL' } }
     );
+
+    clearAuthCookies(res);
 
     res.status(200).json({
       success: true,

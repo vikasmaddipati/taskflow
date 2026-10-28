@@ -29,6 +29,8 @@ async function runAll() {
     await runScript('tests/multi_tenant_rbac.test.js');
     console.log('\n------------------------------------------------------------\n');
     await runScript('tests/billing_and_quotas.test.js');
+    console.log('\n------------------------------------------------------------\n');
+    await runScript('tests/security_and_auth_hardening.test.js');
     console.log('\n============================================================');
     console.log('   All Test Suites Completed Successfully (0 Errors)        ');
     console.log('============================================================\n');

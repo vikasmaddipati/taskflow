@@ -5,6 +5,8 @@ import {
   googleAuth,
   requestEmailOtp,
   verifyEmailOtp,
+  verifyEmail,
+  resendVerificationEmail,
   forgotPassword,
   verifyResetOtp,
   resetPassword,
@@ -27,6 +29,8 @@ const router = express.Router();
 // Email & Password Auth
 router.post('/register', authLimiter, register);
 router.post('/login', authLimiter, login);
+router.post('/verify-email', otpVerifyLimiter, verifyEmail);
+router.post('/resend-verification', otpRequestLimiter, resendVerificationEmail);
 
 // Google Sign-In
 router.post('/google', googleAuth);

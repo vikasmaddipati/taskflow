@@ -19,7 +19,7 @@ import { Toast } from './components/common/Toast';
 import api from './services/api';
 
 const AppContent = () => {
-  const { isAuthenticated, loading: authLoading, currentOrg } = useAuth();
+  const { isAuthenticated, loading: authLoading, currentOrg, user } = useAuth();
 
   // Navigation state
   const [currentView, setCurrentView] = useState('dashboard');
@@ -198,6 +198,20 @@ const AppContent = () => {
           onOpenCreateModal={() => handleOpenCreateModal()}
           onOpenCreateOrgModal={() => setIsCreateOrgModalOpen(true)}
         />
+
+        {/* Email Verification Banner */}
+        {user && !user.isEmailVerified && (
+          <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-xs text-amber-700 dark:text-amber-300 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="font-bold uppercase tracking-wider text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full">
+                Verification Required
+              </span>
+              <span>
+                Your email address ({user.email}) has not been confirmed. Please verify your email to secure your account.
+              </span>
+            </div>
+          </div>
+        )}
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
           {currentView === 'dashboard' && (

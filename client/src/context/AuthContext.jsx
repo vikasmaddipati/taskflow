@@ -6,22 +6,30 @@ const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(() => localStorage.getItem('tm_token'));
   const [currentOrg, setCurrentOrg] = useState(null);
   const [organizations, setOrganizations] = useState([]);
   const [currentWorkspace, setCurrentWorkspace] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
+  const [verificationPending, setVerificationPending] = useState(false);
   const { setTheme } = useTheme();
 
-  // Clear session helper declared first to eliminate Temporal Dead Zone (TDZ)
+  // Clear obsolete/insecure localStorage authentication tokens (migration to HttpOnly cookies)
+  useEffect(() => {
+    try {
+      localStorage.removeItem('tm_token');
+      localStorage.removeItem('tm_refresh_token');
+      localStorage.removeItem('tm_user');
+    } catch {
+      // ignore storage access errors
+    }
+  }, []);
+
+  // Secure logout helper: invalidates server-side session and clears client state
   const logout = useCallback(async () => {
     try {
-      const refreshToken = localStorage.getItem('tm_refresh_token');
-      if (refreshToken) {
-        await api.post('/auth/logout', { refreshToken }).catch(() => {});
-      }
+      await api.post('/auth/logout').catch(() => {});
     } catch {
       // ignore logout network errors
     } finally {
@@ -30,27 +38,27 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('tm_user');
       localStorage.removeItem('tm_org_id');
       localStorage.removeItem('tm_workspace_id');
-      setToken(null);
       setUser(null);
       setCurrentOrg(null);
       setOrganizations([]);
       setCurrentWorkspace(null);
       setWorkspaces([]);
       setAuthError(null);
+      setVerificationPending(false);
     }
   }, []);
 
-  const saveAuthSession = useCallback(
-    (receivedToken, receivedRefreshToken, receivedUser) => {
-      localStorage.setItem('tm_token', receivedToken);
-      if (receivedRefreshToken) {
-        localStorage.setItem('tm_refresh_token', receivedRefreshToken);
-      }
-      localStorage.setItem('tm_user', JSON.stringify(receivedUser));
-      setToken(receivedToken);
+  // Set user profile in memory
+  const handleAuthenticatedUser = useCallback(
+    (receivedUser) => {
       setUser(receivedUser);
-      if (receivedUser.theme) {
+      if (receivedUser?.theme) {
         setTheme(receivedUser.theme);
+      }
+      if (receivedUser && !receivedUser.isEmailVerified) {
+        setVerificationPending(true);
+      } else {
+        setVerificationPending(false);
       }
     },
     [setTheme]
@@ -100,28 +108,21 @@ export const AuthProvider = ({ children }) => {
     }
   }, [fetchWorkspaces]);
 
-  // Load user profile on mount
+  // Load user profile on mount using HttpOnly cookie authentication
   useEffect(() => {
     let isMounted = true;
 
-    const fetchUser = async () => {
-      if (!token) {
-        if (isMounted) setLoading(false);
-        return;
-      }
+    const checkAuthStatus = async () => {
       try {
         const response = await api.get('/auth/me');
         if (isMounted && response.data.success && response.data.user) {
-          setUser(response.data.user);
-          if (response.data.user.theme) {
-            setTheme(response.data.user.theme);
-          }
+          handleAuthenticatedUser(response.data.user);
           await fetchOrganizations();
         }
       } catch (err) {
-        console.error('Failed to authenticate with existing token:', err);
+        // Not authenticated or session expired
         if (isMounted) {
-          logout();
+          setUser(null);
         }
       } finally {
         if (isMounted) {
@@ -130,10 +131,14 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
-    fetchUser();
+    checkAuthStatus();
 
     const handleUnauthorized = () => {
-      if (isMounted) logout();
+      if (isMounted) {
+        setUser(null);
+        setCurrentOrg(null);
+        setCurrentWorkspace(null);
+      }
     };
     window.addEventListener('auth:unauthorized', handleUnauthorized);
 
@@ -141,17 +146,20 @@ export const AuthProvider = ({ children }) => {
       isMounted = false;
       window.removeEventListener('auth:unauthorized', handleUnauthorized);
     };
-  }, [token, logout, setTheme, fetchOrganizations]);
+  }, [handleAuthenticatedUser, fetchOrganizations]);
 
   // Standard Email/Password Login
   const login = async (email, password) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/login', { email, password });
-      const { token: receivedToken, refreshToken: receivedRefreshToken, user: receivedUser } = response.data;
-      saveAuthSession(receivedToken, receivedRefreshToken, receivedUser);
+      const { user: receivedUser, requiresVerification } = response.data;
+      handleAuthenticatedUser(receivedUser);
+      if (requiresVerification) {
+        setVerificationPending(true);
+      }
       await fetchOrganizations();
-      return { success: true };
+      return { success: true, requiresVerification };
     } catch (err) {
       const message = err.response?.data?.message || 'Login failed. Please check your credentials.';
       setAuthError(message);
@@ -164,10 +172,13 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/register', { name, email, password });
-      const { token: receivedToken, refreshToken: receivedRefreshToken, user: receivedUser } = response.data;
-      saveAuthSession(receivedToken, receivedRefreshToken, receivedUser);
+      const { user: receivedUser, requiresVerification } = response.data;
+      handleAuthenticatedUser(receivedUser);
+      if (requiresVerification) {
+        setVerificationPending(true);
+      }
       await fetchOrganizations();
-      return { success: true };
+      return { success: true, requiresVerification: true, message: response.data.message };
     } catch (err) {
       const message = err.response?.data?.message || 'Registration failed. Please try again.';
       setAuthError(message);
@@ -180,8 +191,8 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/google', { credential });
-      const { token: receivedToken, refreshToken: receivedRefreshToken, user: receivedUser } = response.data;
-      saveAuthSession(receivedToken, receivedRefreshToken, receivedUser);
+      const { user: receivedUser } = response.data;
+      handleAuthenticatedUser(receivedUser);
       await fetchOrganizations();
       return { success: true };
     } catch (err) {
@@ -191,60 +202,86 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Request Email OTP
+  // Request Email OTP (Passwordless Login)
   const requestEmailOtp = async (email) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/otp/request', { email });
       return { success: true, message: response.data.message };
     } catch (err) {
-      const message = err.response?.data?.message || 'Failed to send verification code.';
+      const message = err.response?.data?.message || 'Failed to send OTP code';
       setAuthError(message);
       return { success: false, message };
     }
   };
 
-  // Verify Email OTP
-  const verifyEmailOtp = async (email, otp, name = '') => {
+  // Verify Email OTP (Passwordless Login)
+  const verifyEmailOtp = async (email, otp, name) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/otp/verify', { email, otp, name });
-      const { token: receivedToken, refreshToken: receivedRefreshToken, user: receivedUser } = response.data;
-      saveAuthSession(receivedToken, receivedRefreshToken, receivedUser);
+      const { user: receivedUser } = response.data;
+      handleAuthenticatedUser(receivedUser);
       await fetchOrganizations();
       return { success: true };
     } catch (err) {
-      const message = err.response?.data?.message || 'Invalid or expired verification code.';
+      const message = err.response?.data?.message || 'Invalid or expired OTP code';
       setAuthError(message);
       return { success: false, message };
     }
   };
 
-  // Request Password Reset OTP
+  // Verify Email Address (Account Verification)
+  const verifyEmail = async (email, otp) => {
+    setAuthError(null);
+    try {
+      const response = await api.post('/auth/verify-email', { email, otp });
+      const { user: receivedUser } = response.data;
+      handleAuthenticatedUser(receivedUser);
+      setVerificationPending(false);
+      await fetchOrganizations();
+      return { success: true, message: response.data.message };
+    } catch (err) {
+      const message = err.response?.data?.message || 'Invalid verification code';
+      setAuthError(message);
+      return { success: false, message };
+    }
+  };
+
+  // Resend Email Verification Code
+  const resendVerification = async (email) => {
+    setAuthError(null);
+    try {
+      const response = await api.post('/auth/resend-verification', { email });
+      return { success: true, message: response.data.message };
+    } catch (err) {
+      const message = err.response?.data?.message || 'Failed to resend verification code';
+      setAuthError(message);
+      return { success: false, message };
+    }
+  };
+
+  // Request Forgot Password Code
   const requestForgotPassword = async (email) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/forgot-password', { email });
       return { success: true, message: response.data.message };
     } catch (err) {
-      const message = err.response?.data?.message || 'Failed to process password reset request.';
+      const message = err.response?.data?.message || 'Failed to request reset code';
       setAuthError(message);
       return { success: false, message };
     }
   };
 
-  // Verify Reset OTP
+  // Verify Password Reset OTP
   const verifyResetOtp = async (email, otp) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/reset-password/verify-otp', { email, otp });
-      return {
-        success: true,
-        resetToken: response.data.resetToken,
-        message: response.data.message
-      };
+      return { success: true, resetToken: response.data.resetToken };
     } catch (err) {
-      const message = err.response?.data?.message || 'Invalid or expired reset code.';
+      const message = err.response?.data?.message || 'Invalid reset code';
       setAuthError(message);
       return { success: false, message };
     }
@@ -261,42 +298,46 @@ export const AuthProvider = ({ children }) => {
       });
       return { success: true, message: response.data.message };
     } catch (err) {
-      const message = err.response?.data?.message || 'Failed to reset password.';
+      const message = err.response?.data?.message || 'Password reset failed';
       setAuthError(message);
       return { success: false, message };
     }
   };
 
   // Switch Active Organization
-  const switchOrganization = (org) => {
-    setCurrentOrg(org);
-    localStorage.setItem('tm_org_id', org._id);
-    localStorage.removeItem('tm_workspace_id');
-    setCurrentWorkspace(null);
-    fetchWorkspaces(org._id);
-    window.dispatchEvent(new Event('org:changed'));
+  const switchOrganization = async (orgId) => {
+    try {
+      const target = organizations.find((o) => o._id === orgId);
+      if (target) {
+        setCurrentOrg(target);
+        localStorage.setItem('tm_org_id', target._id);
+        await fetchWorkspaces(target._id);
+      }
+    } catch (err) {
+      console.error('Error switching organization:', err);
+    }
   };
 
   // Switch Active Workspace
-  const switchWorkspace = (ws) => {
-    setCurrentWorkspace(ws);
-    localStorage.setItem('tm_workspace_id', ws._id);
-    window.dispatchEvent(new Event('workspace:changed'));
+  const switchWorkspace = (wsId) => {
+    const target = workspaces.find((w) => w._id === wsId);
+    if (target) {
+      setCurrentWorkspace(target);
+      localStorage.setItem('tm_workspace_id', target._id);
+    }
   };
 
   // Update Profile
-  const updateProfile = async (profileData) => {
+  const updateProfile = async (data) => {
     try {
-      const response = await api.put('/auth/profile', profileData);
+      const response = await api.put('/auth/profile', data);
       if (response.data.success && response.data.user) {
         setUser(response.data.user);
-        localStorage.setItem('tm_user', JSON.stringify(response.data.user));
-        if (profileData.theme) {
-          setTheme(profileData.theme);
+        if (response.data.user.theme) {
+          setTheme(response.data.user.theme);
         }
-        return { success: true, message: response.data.message };
       }
-      return { success: false, message: 'Failed to update profile' };
+      return { success: true, message: response.data.message };
     } catch (err) {
       const message = err.response?.data?.message || 'Profile update failed';
       return { success: false, message };
@@ -307,11 +348,12 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider
       value={{
         user,
-        token,
         loading,
         authError,
         setAuthError,
         isAuthenticated: !!user,
+        isEmailVerified: user?.isEmailVerified ?? false,
+        verificationPending,
         currentOrg,
         organizations,
         switchOrganization,
@@ -325,6 +367,8 @@ export const AuthProvider = ({ children }) => {
         loginWithGoogle,
         requestEmailOtp,
         verifyEmailOtp,
+        verifyEmail,
+        resendVerification,
         requestForgotPassword,
         verifyResetOtp,
         completePasswordReset,

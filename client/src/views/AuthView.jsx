@@ -46,6 +46,8 @@ export const AuthView = () => {
     loginWithGoogle,
     requestEmailOtp,
     verifyEmailOtp,
+    verifyEmail,
+    resendVerification,
     requestForgotPassword,
     verifyResetOtp,
     completePasswordReset,
@@ -100,8 +102,43 @@ export const AuthView = () => {
       return;
     }
     setIsSubmitting(true);
-    await register(name.trim(), email.trim(), password);
+    const res = await register(name.trim(), email.trim(), password);
     setIsSubmitting(false);
+    if (res?.success && res?.requiresVerification) {
+      setMode('verify_email');
+      setStatusMessage('Account created! Please enter the 6-digit verification code sent to your email.');
+      setResendTimer(60);
+    }
+  };
+
+  // 2b. Handle Email Verification Code Submission
+  const handleVerifyEmail = async (e) => {
+    e.preventDefault();
+    setValidationError('');
+    if (otp.length !== 6) {
+      setValidationError('Please enter all 6 digits of your verification code');
+      return;
+    }
+    setIsSubmitting(true);
+    const res = await verifyEmail(email.trim(), otp);
+    setIsSubmitting(false);
+    if (!res?.success) {
+      setValidationError(res?.message || 'Verification failed');
+    }
+  };
+
+  // 2c. Resend Verification Code
+  const handleResendVerification = async () => {
+    if (resendTimer > 0) return;
+    setIsSubmitting(true);
+    const res = await resendVerification(email.trim());
+    setIsSubmitting(false);
+    if (res?.success) {
+      setResendTimer(60);
+      setStatusMessage('A new verification code has been dispatched to your email.');
+    } else {
+      setValidationError(res?.message || 'Failed to resend code');
+    }
   };
 
   // 3. Google Sign-In Success Handler
@@ -695,6 +732,84 @@ export const AuthView = () => {
                   >
                     <RefreshCw className="w-3 h-3" />
                     Resend verification code
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================ */}
+          {/* MODE 4b: EMAIL VERIFICATION CODE ENTRY                       */}
+          {/* ============================================================ */}
+          {mode === 'verify_email' && (
+            <div className="space-y-4">
+              <button
+                type="button"
+                onClick={() => switchMode('register')}
+                className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-medium"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to registration</span>
+              </button>
+
+              <div className="pt-1">
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-2">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                  Verify Your Email
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  Enter the 6-digit activation code sent to <span className="font-semibold text-slate-700 dark:text-slate-300">{email}</span>.
+                </p>
+              </div>
+
+              <form onSubmit={handleVerifyEmail} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                    Verification Code
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    maxLength={6}
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                    placeholder="123456"
+                    disabled={isSubmitting}
+                    className="w-full px-3.5 py-3 text-center text-2xl font-mono tracking-[10px] font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || otp.length !== 6}
+                  className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-sm rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isSubmitting ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <span>Activate Account</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <div className="pt-2 text-center text-xs text-slate-500">
+                {resendTimer > 0 ? (
+                  <span>Resend code in <strong className="text-slate-700 dark:text-slate-300">{resendTimer}s</strong></span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={isSubmitting}
+                    className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold inline-flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Resend code
                   </button>
                 )}
               </div>
