@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { useTheme } from './ThemeContext';
 
@@ -7,53 +7,119 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(() => localStorage.getItem('tm_token'));
+  const [currentOrg, setCurrentOrg] = useState(null);
+  const [organizations, setOrganizations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
   const { setTheme } = useTheme();
 
-  // Load user profile on mount if token exists
+  // Clear session helper declared first to eliminate Temporal Dead Zone (TDZ)
+  const logout = useCallback(async () => {
+    try {
+      const refreshToken = localStorage.getItem('tm_refresh_token');
+      if (refreshToken) {
+        await api.post('/auth/logout', { refreshToken }).catch(() => {});
+      }
+    } catch {
+      // ignore logout network errors
+    } finally {
+      localStorage.removeItem('tm_token');
+      localStorage.removeItem('tm_refresh_token');
+      localStorage.removeItem('tm_user');
+      localStorage.removeItem('tm_org_id');
+      setToken(null);
+      setUser(null);
+      setCurrentOrg(null);
+      setOrganizations([]);
+      setAuthError(null);
+    }
+  }, []);
+
+  const saveAuthSession = useCallback(
+    (receivedToken, receivedRefreshToken, receivedUser) => {
+      localStorage.setItem('tm_token', receivedToken);
+      if (receivedRefreshToken) {
+        localStorage.setItem('tm_refresh_token', receivedRefreshToken);
+      }
+      localStorage.setItem('tm_user', JSON.stringify(receivedUser));
+      setToken(receivedToken);
+      setUser(receivedUser);
+      if (receivedUser.theme) {
+        setTheme(receivedUser.theme);
+      }
+    },
+    [setTheme]
+  );
+
+  // Fetch user organizations
+  const fetchOrganizations = useCallback(async () => {
+    try {
+      const res = await api.get('/organizations');
+      if (res.data.success && res.data.organizations) {
+        setOrganizations(res.data.organizations);
+        const storedOrgId = localStorage.getItem('tm_org_id');
+        const active = res.data.organizations.find((o) => o._id === storedOrgId) || res.data.organizations[0];
+        if (active) {
+          setCurrentOrg(active);
+          localStorage.setItem('tm_org_id', active._id);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load organizations:', err?.message);
+    }
+  }, []);
+
+  // Load user profile on mount
   useEffect(() => {
+    let isMounted = true;
+
     const fetchUser = async () => {
       if (!token) {
-        setLoading(false);
+        if (isMounted) setLoading(false);
         return;
       }
       try {
         const response = await api.get('/auth/me');
-        if (response.data.success && response.data.user) {
+        if (isMounted && response.data.success && response.data.user) {
           setUser(response.data.user);
           if (response.data.user.theme) {
             setTheme(response.data.user.theme);
           }
+          await fetchOrganizations();
         }
       } catch (err) {
         console.error('Failed to authenticate with existing token:', err);
-        logout();
+        if (isMounted) {
+          logout();
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchUser();
-  }, [token]);
 
-  const saveAuthSession = (receivedToken, receivedUser) => {
-    localStorage.setItem('tm_token', receivedToken);
-    localStorage.setItem('tm_user', JSON.stringify(receivedUser));
-    setToken(receivedToken);
-    setUser(receivedUser);
-    if (receivedUser.theme) {
-      setTheme(receivedUser.theme);
-    }
-  };
+    const handleUnauthorized = () => {
+      if (isMounted) logout();
+    };
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('auth:unauthorized', handleUnauthorized);
+    };
+  }, [token, logout, setTheme, fetchOrganizations]);
 
   // Standard Email/Password Login
   const login = async (email, password) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/login', { email, password });
-      const { token: receivedToken, user: receivedUser } = response.data;
-      saveAuthSession(receivedToken, receivedUser);
+      const { token: receivedToken, refreshToken: receivedRefreshToken, user: receivedUser } = response.data;
+      saveAuthSession(receivedToken, receivedRefreshToken, receivedUser);
+      await fetchOrganizations();
       return { success: true };
     } catch (err) {
       const message = err.response?.data?.message || 'Login failed. Please check your credentials.';
@@ -67,8 +133,9 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/register', { name, email, password });
-      const { token: receivedToken, user: receivedUser } = response.data;
-      saveAuthSession(receivedToken, receivedUser);
+      const { token: receivedToken, refreshToken: receivedRefreshToken, user: receivedUser } = response.data;
+      saveAuthSession(receivedToken, receivedRefreshToken, receivedUser);
+      await fetchOrganizations();
       return { success: true };
     } catch (err) {
       const message = err.response?.data?.message || 'Registration failed. Please try again.';
@@ -82,8 +149,9 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/google', { credential });
-      const { token: receivedToken, user: receivedUser } = response.data;
-      saveAuthSession(receivedToken, receivedUser);
+      const { token: receivedToken, refreshToken: receivedRefreshToken, user: receivedUser } = response.data;
+      saveAuthSession(receivedToken, receivedRefreshToken, receivedUser);
+      await fetchOrganizations();
       return { success: true };
     } catch (err) {
       const message = err.response?.data?.message || 'Google sign-in failed. Please try again.';
@@ -92,7 +160,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Request Email OTP (Login / Signup)
+  // Request Email OTP
   const requestEmailOtp = async (email) => {
     setAuthError(null);
     try {
@@ -100,19 +168,19 @@ export const AuthProvider = ({ children }) => {
       return { success: true, message: response.data.message };
     } catch (err) {
       const message = err.response?.data?.message || 'Failed to send verification code.';
-      const code = err.response?.data?.code;
       setAuthError(message);
-      return { success: false, code, message };
+      return { success: false, message };
     }
   };
 
-  // Verify Email OTP (Login / Signup)
+  // Verify Email OTP
   const verifyEmailOtp = async (email, otp, name = '') => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/otp/verify', { email, otp, name });
-      const { token: receivedToken, user: receivedUser } = response.data;
-      saveAuthSession(receivedToken, receivedUser);
+      const { token: receivedToken, refreshToken: receivedRefreshToken, user: receivedUser } = response.data;
+      saveAuthSession(receivedToken, receivedRefreshToken, receivedUser);
+      await fetchOrganizations();
       return { success: true };
     } catch (err) {
       const message = err.response?.data?.message || 'Invalid or expired verification code.';
@@ -129,9 +197,8 @@ export const AuthProvider = ({ children }) => {
       return { success: true, message: response.data.message };
     } catch (err) {
       const message = err.response?.data?.message || 'Failed to process password reset request.';
-      const code = err.response?.data?.code;
       setAuthError(message);
-      return { success: false, code, message };
+      return { success: false, message };
     }
   };
 
@@ -169,14 +236,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('tm_token');
-    localStorage.removeItem('tm_user');
-    setToken(null);
-    setUser(null);
-    setAuthError(null);
+  // Switch Active Organization
+  const switchOrganization = (org) => {
+    setCurrentOrg(org);
+    localStorage.setItem('tm_org_id', org._id);
+    window.dispatchEvent(new Event('org:changed'));
   };
 
+  // Update Profile
   const updateProfile = async (profileData) => {
     try {
       const response = await api.put('/auth/profile', profileData);
@@ -204,6 +271,10 @@ export const AuthProvider = ({ children }) => {
         authError,
         setAuthError,
         isAuthenticated: !!user,
+        currentOrg,
+        organizations,
+        switchOrganization,
+        fetchOrganizations,
         login,
         register,
         loginWithGoogle,

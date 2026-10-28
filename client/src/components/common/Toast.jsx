@@ -2,16 +2,21 @@ import React, { useEffect } from 'react';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
 export const Toast = ({ toast, onClose }) => {
-  if (!toast) return null;
-
-  const { type = 'info', message } = toast;
-
+  // Unconditional top-level Hook call to strictly adhere to React Rules of Hooks
   useEffect(() => {
+    if (!toast) return;
+
     const timer = setTimeout(() => {
       onClose();
     }, 3500);
+
     return () => clearTimeout(timer);
   }, [toast, onClose]);
+
+  // Safe early return after all Hooks have been invoked
+  if (!toast) return null;
+
+  const { type = 'info', message } = toast;
 
   const styles = {
     success: 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-200 dark:border-emerald-800',
