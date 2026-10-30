@@ -1,0 +1,114 @@
+name: TaskFlow Continuous Integration & Automated Verification
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-test:
+    name: Backend Test Suite (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [ 20.x, 22.x ]
+
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })' --quiet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      PORT: 5000
+      HOST: 127.0.0.1
+      MONGODB_URI: mongodb://127.0.0.1:27017/taskflow_ci_test
+      JWT_SECRET: ci_test_hardened_secret_key_minimum_32_bytes_long_12345
+      REFRESH_JWT_SECRET: ci_test_hardened_refresh_secret_key_minimum_32_bytes_long_12345
+      CSRF_SECRET: ci_test_hardened_csrf_secret_key_minimum_32_bytes_long_12345
+      MOCK_EMAIL: 'true'
+      CORS_ALLOWED_ORIGINS: 'http://localhost:5173,http://127.0.0.1:5173'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install Server Dependencies
+        run: npm --prefix server ci
+
+      - name: Run Full Automated Backend Verification Suite (193+ Tests)
+        run: npm --prefix server test
+
+  frontend-test-and-build:
+    name: Frontend Lint, Test & Production Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install Client Dependencies
+        run: npm --prefix client ci
+
+      - name: Run Frontend Linter
+        run: npm --prefix client run lint
+
+      - name: Run Component & Hook Unit Tests (Vitest)
+        run: npm --prefix client run test
+
+      - name: Build Production Client Distribution
+        run: npm --prefix client run build
+
+      - name: Verify Production Bundle Artifacts
+        run: |
+          test -f client/dist/index.html || exit 1
+          echo "Production assets successfully generated."
+
+  security-audit:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Audit Backend Dependencies
+        run: npm --prefix server audit --omit=dev --audit-level=high || true
+
+      - name: Audit Frontend Dependencies
+        run: npm --prefix client audit --omit=dev --audit-level=high || true

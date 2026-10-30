@@ -1,29 +1,129 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Sparkles } from 'lucide-react';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { DashboardView } from './views/DashboardView';
+import { AIView } from './views/AIView';
 import { AllTasksView } from './views/AllTasksView';
 import { MyDayView } from './views/MyDayView';
 import { UpcomingView } from './views/UpcomingView';
 import { CompletedView } from './views/CompletedView';
+import { BoardView } from './views/BoardView';
 import { TeamView } from './views/TeamView';
 import { BillingView } from './views/BillingView';
 import { SettingsView } from './views/SettingsView';
+import { TrashView } from './views/TrashView';
 import { AuthView } from './views/AuthView';
 import { TaskModal } from './components/common/TaskModal';
 import { DeleteConfirmModal } from './components/common/DeleteConfirmModal';
 import { CreateOrgModal } from './components/common/CreateOrgModal';
+import { AiCopilotDrawer } from './components/ai/AiCopilotDrawer';
 import { Toast } from './components/common/Toast';
 import api from './services/api';
+
+const VIEW_PATH_MAP = {
+  dashboard: '/dashboard',
+  ai: '/ai',
+  all: '/tasks',
+  board: '/board',
+  today: '/my-day',
+  upcoming: '/upcoming',
+  completed: '/completed',
+  team: '/team',
+  billing: '/billing',
+  settings: '/settings',
+  trash: '/trash'
+};
+
+const PATH_VIEW_MAP = {
+  '/': 'dashboard',
+  '/dashboard': 'dashboard',
+  '/ai': 'ai',
+  '/tasks': 'all',
+  '/all': 'all',
+  '/board': 'board',
+  '/my-day': 'today',
+  '/today': 'today',
+  '/upcoming': 'upcoming',
+  '/completed': 'completed',
+  '/team': 'team',
+  '/billing': 'billing',
+  '/settings': 'settings',
+  '/trash': 'trash'
+};
+
+const getViewFromLocation = () => {
+  if (typeof window === 'undefined') return 'dashboard';
+  // Check hash if present (#/tasks or #tasks)
+  if (window.location.hash) {
+    const hash = window.location.hash.replace(/^#\/?/, '/').toLowerCase();
+    if (PATH_VIEW_MAP[hash]) return PATH_VIEW_MAP[hash];
+  }
+  const pathname = (window.location.pathname || '/').toLowerCase().replace(/\/+$/, '') || '/';
+  return PATH_VIEW_MAP[pathname] || 'dashboard';
+};
 
 const AppContent = () => {
   const { isAuthenticated, loading: authLoading, currentOrg, user } = useAuth();
 
-  // Navigation state
-  const [currentView, setCurrentView] = useState('dashboard');
+  // Navigation state with deep link URL synchronization
+  const [currentView, setCurrentView] = useState(() => getViewFromLocation());
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
+
+  // Network online/offline listener
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Synchronize view changes with browser history
+  const navigateToView = useCallback((newView, replace = false) => {
+    if (!VIEW_PATH_MAP[newView]) return;
+    setCurrentView(newView);
+    const targetPath = VIEW_PATH_MAP[newView];
+    const currentPath = window.location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
+    if (currentPath !== targetPath) {
+      if (replace) {
+        window.history.replaceState({ view: newView }, '', targetPath);
+      } else {
+        window.history.pushState({ view: newView }, '', targetPath);
+      }
+    }
+  }, []);
+
+  // Handle browser Back / Forward buttons via popstate
+  useEffect(() => {
+    const handlePopState = (event) => {
+      if (event.state && event.state.view) {
+        setCurrentView(event.state.view);
+      } else {
+        setCurrentView(getViewFromLocation());
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Synchronize history state on initial mount or auth change
+  useEffect(() => {
+    if (isAuthenticated) {
+      const active = getViewFromLocation();
+      setCurrentView(active);
+      const targetPath = VIEW_PATH_MAP[active] || '/';
+      if (window.location.pathname !== targetPath) {
+        window.history.replaceState({ view: active }, '', targetPath);
+      }
+    }
+  }, [isAuthenticated]);
 
   // Global refresh trigger for lists when a task is updated/deleted
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -46,6 +146,7 @@ const AppContent = () => {
   const [isDeletingTask, setIsDeletingTask] = useState(false);
 
   const [isCreateOrgModalOpen, setIsCreateOrgModalOpen] = useState(false);
+  const [isAiCopilotOpen, setIsAiCopilotOpen] = useState(false);
 
   // Toast notification state
   const [toast, setToast] = useState(null);
@@ -53,6 +154,43 @@ const AppContent = () => {
   const showToast = useCallback((toastData) => {
     setToast(toastData);
   }, []);
+
+  // Listen to offline mutation queue sync events
+  useEffect(() => {
+    const handleSynced = (e) => {
+      showToast({ type: 'success', message: `${e.detail?.count || 1} offline action(s) synchronized` });
+      setRefreshTrigger((prev) => prev + 1);
+    };
+    window.addEventListener('offline:synced', handleSynced);
+    return () => window.removeEventListener('offline:synced', handleSynced);
+  }, [showToast]);
+
+  // Real-Time Server-Sent Events (SSE) stream for instant multi-user workspace sync
+  useEffect(() => {
+    if (!isAuthenticated || !currentOrg?._id || typeof EventSource === 'undefined') return;
+    let eventSource = null;
+    try {
+      eventSource = new EventSource(`/api/v1/events`, { withCredentials: true });
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.type && data.type !== 'connected') {
+            setRefreshTrigger((prev) => prev + 1);
+          }
+        } catch {
+          // ignore parsing error
+        }
+      };
+      eventSource.onerror = () => {
+        eventSource?.close();
+      };
+    } catch {
+      // ignore connection error
+    }
+    return () => {
+      eventSource?.close();
+    };
+  }, [isAuthenticated, currentOrg?._id]);
 
   // Listen to organization switch events to refresh stats
   useEffect(() => {
@@ -184,7 +322,7 @@ const AppContent = () => {
       {/* Sidebar (Desktop + Mobile) */}
       <Sidebar
         currentView={currentView}
-        onSelectView={setCurrentView}
+        onSelectView={navigateToView}
         isMobileOpen={isMobileOpen}
         onCloseMobile={() => setIsMobileOpen(false)}
         stats={sidebarStats}
@@ -197,6 +335,7 @@ const AppContent = () => {
           onOpenMobileMenu={() => setIsMobileOpen(true)}
           onOpenCreateModal={() => handleOpenCreateModal()}
           onOpenCreateOrgModal={() => setIsCreateOrgModalOpen(true)}
+          onToggleAiCopilot={() => setIsAiCopilotOpen((prev) => !prev)}
         />
 
         {/* Email Verification Banner */}
@@ -213,14 +352,30 @@ const AppContent = () => {
           </div>
         )}
 
+        {/* Offline Mode Banner */}
+        {isOffline && (
+          <div className="bg-amber-500 text-white px-4 py-2 text-xs font-semibold flex items-center justify-center gap-2 shadow-xs">
+            <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+            <span>Offline Mode: Working from local cache. Changes will be synced when connection is restored.</span>
+          </div>
+        )}
+
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
           {currentView === 'dashboard' && (
             <DashboardView
-              onNavigate={setCurrentView}
+              onNavigate={navigateToView}
               onOpenCreateModal={() => handleOpenCreateModal()}
               onEditTask={handleOpenEditModal}
               onDeleteTask={handleOpenDeleteModal}
               onToggleStatus={handleToggleStatus}
+            />
+          )}
+
+          {currentView === 'ai' && (
+            <AIView
+              onTaskCreated={() => setRefreshTrigger((p) => p + 1)}
+              onNavigate={navigateToView}
+              showToast={showToast}
             />
           )}
 
@@ -231,6 +386,16 @@ const AppContent = () => {
               onDeleteTask={handleOpenDeleteModal}
               onToggleStatus={handleToggleStatus}
               refreshTrigger={refreshTrigger}
+            />
+          )}
+
+          {currentView === 'board' && (
+            <BoardView
+              onOpenCreateModal={() => handleOpenCreateModal()}
+              onEditTask={handleOpenEditModal}
+              onDeleteTask={handleOpenDeleteModal}
+              refreshTrigger={refreshTrigger}
+              showToast={showToast}
             />
           )}
 
@@ -274,6 +439,14 @@ const AppContent = () => {
           {currentView === 'settings' && (
             <SettingsView showToast={showToast} />
           )}
+
+          {currentView === 'trash' && (
+            <TrashView
+              showToast={showToast}
+              refreshTrigger={refreshTrigger}
+              onTaskRestored={() => setRefreshTrigger((p) => p + 1)}
+            />
+          )}
         </main>
       </div>
 
@@ -303,6 +476,27 @@ const AppContent = () => {
       <CreateOrgModal
         isOpen={isCreateOrgModalOpen}
         onClose={() => setIsCreateOrgModalOpen(false)}
+        showToast={showToast}
+      />
+
+      {/* Floating AI Copilot Trigger Button */}
+      {!isAiCopilotOpen && currentView !== 'ai' && (
+        <button
+          onClick={() => setIsAiCopilotOpen(true)}
+          className="fixed bottom-6 right-6 z-40 p-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 group cursor-pointer"
+          title="Open AI Copilot"
+        >
+          <Sparkles className="w-5 h-5 animate-pulse" />
+          <span className="text-xs font-bold pr-1 hidden group-hover:inline transition-all">AI Copilot</span>
+        </button>
+      )}
+
+      {/* Floating AI Copilot Drawer */}
+      <AiCopilotDrawer
+        isOpen={isAiCopilotOpen}
+        onClose={() => setIsAiCopilotOpen(false)}
+        onOpenFullView={() => navigateToView('ai')}
+        onTaskAction={() => setRefreshTrigger((p) => p + 1)}
         showToast={showToast}
       />
 

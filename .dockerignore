@@ -1,0 +1,13 @@
+node_modules
+client/node_modules
+client/dist
+client/android
+server/node_modules
+.git
+.github
+.gitignore
+*.log
+npm-debug.log*
+.env
+.env.*
+!.env.example

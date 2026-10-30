@@ -14,23 +14,34 @@ export const CompletedView = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchCompletedTasks = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await api.get('/tasks?status=completed&sortBy=updatedAt&sortOrder=desc');
-      if (res.data.success) {
-        setTasks(res.data.tasks);
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load completed tasks');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchCompletedTasks = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await api.get('/tasks?status=completed&sortBy=updatedAt&sortOrder=desc', {
+          signal: controller.signal
+        });
+        if (res.data.success) {
+          setTasks(res.data.items || res.data.tasks || []);
+        }
+      } catch (err) {
+        if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+        setError(err.response?.data?.message || 'Failed to load completed tasks');
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    };
+
     fetchCompletedTasks();
+
+    return () => {
+      controller.abort();
+    };
   }, [refreshTrigger]);
 
   return (

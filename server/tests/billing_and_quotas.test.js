@@ -61,8 +61,11 @@ async function runBillingTests() {
       console.log('[Test Runner] Launching backend server...');
       spawnedServer = spawn('node', ['src/server.js'], {
         cwd: path.resolve(__dirname, '..'),
-        stdio: 'pipe'
+        stdio: 'pipe',
+        env: { ...process.env, HOST: '127.0.0.1' }
       });
+      spawnedServer.stdout.on('data', () => {});
+      spawnedServer.stderr.on('data', () => {});
 
       for (let i = 0; i < 25; i++) {
         await new Promise((r) => setTimeout(r, 500));

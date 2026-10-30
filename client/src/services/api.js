@@ -97,6 +97,14 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     if (!error.response || error.response.status !== 401 || originalRequest._retry) {
+      // If network is offline and mutation was attempted, queue mutation for background sync
+      if (
+        (!error.response || error.code === 'ERR_NETWORK') &&
+        ['post', 'put', 'patch', 'delete'].includes(originalRequest.method?.toLowerCase()) &&
+        !originalRequest.url?.includes('/auth/')
+      ) {
+        queueOfflineMutation(originalRequest);
+      }
       return Promise.reject(error);
     }
 
@@ -148,6 +156,65 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Offline mutation replay engine
+export const queueOfflineMutation = (config) => {
+  try {
+    const rawQueue = localStorage.getItem('tm_offline_mutations');
+    const queue = rawQueue ? JSON.parse(rawQueue) : [];
+    queue.push({
+      id: `mut_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      url: config.url,
+      method: config.method,
+      data: config.data,
+      params: config.params,
+      timestamp: Date.now()
+    });
+    localStorage.setItem('tm_offline_mutations', JSON.stringify(queue));
+    window.dispatchEvent(new CustomEvent('offline:queued', { detail: { count: queue.length } }));
+  } catch (err) {
+    console.warn('[Offline Storage Warning] Could not queue mutation:', err.message);
+  }
+};
+
+export const syncOfflineMutations = async () => {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  try {
+    const rawQueue = localStorage.getItem('tm_offline_mutations');
+    if (!rawQueue) return;
+    const queue = JSON.parse(rawQueue);
+    if (!Array.isArray(queue) || queue.length === 0) return;
+
+    localStorage.removeItem('tm_offline_mutations');
+    let replayed = 0;
+
+    for (const item of queue) {
+      try {
+        await api({
+          url: item.url,
+          method: item.method,
+          data: item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : undefined,
+          params: item.params
+        });
+        replayed++;
+      } catch (err) {
+        console.warn('[Offline Sync Warning] Failed to replay mutation:', err.message);
+      }
+    }
+
+    if (replayed > 0) {
+      window.dispatchEvent(new CustomEvent('offline:synced', { detail: { count: replayed } }));
+    }
+  } catch (err) {
+    console.warn('[Offline Sync Error]', err.message);
+  }
+};
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    syncOfflineMutations();
+  });
+}
 
 export default api;
 export { getBaseURL };

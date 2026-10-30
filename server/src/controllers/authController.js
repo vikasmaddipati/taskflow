@@ -6,10 +6,12 @@ import Session from '../models/Session.js';
 import Organization from '../models/Organization.js';
 import Membership from '../models/Membership.js';
 import Workspace from '../models/Workspace.js';
+import Task from '../models/Task.js';
 import { sendOtpEmail } from '../services/emailService.js';
 import { verifyGoogleIdToken } from '../services/googleAuthService.js';
 import { config, getValidatedJwtSecret } from '../config/env.js';
 import { isValidEmail, normalizeEmail } from '../utils/validators.js';
+import { runInTransaction } from '../utils/dbSession.js';
 
 // Helper to hash secrets with sha256
 const hashSecret = (value) => {
@@ -96,7 +98,8 @@ export const createAuthSession = async (user, req) => {
   const accessToken = jwt.sign(
     {
       id: user._id.toString(),
-      type: 'access'
+      type: 'access',
+      tokenVersion: user.tokenVersion || 0
     },
     jwtSecret,
     signOptions
@@ -449,28 +452,36 @@ export const requestEmailOtp = async (req, res, next) => {
       });
     }
 
-    // Invalidate prior unused login OTPs
-    await Otp.updateMany(
-      { email: cleanEmail, purpose: 'login', isUsed: false },
-      { $set: { isUsed: true } }
-    );
-
     // Cryptographically secure 6-digit OTP
     const plainOtp = crypto.randomInt(100000, 1000000).toString();
     const otpHash = hashSecret(plainOtp);
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    await Otp.create({
-      email: cleanEmail,
-      otpHash,
-      purpose: 'login',
-      expiresAt,
-      lastSentAt: new Date()
+    // Atomically invalidate prior unused login OTPs and create new OTP
+    await runInTransaction(async (session) => {
+      const opts = session ? { session } : {};
+      await Otp.updateMany(
+        { email: cleanEmail, purpose: 'login', isUsed: false },
+        { $set: { isUsed: true } },
+        opts
+      );
+      await Otp.create(
+        [
+          {
+            email: cleanEmail,
+            otpHash,
+            purpose: 'login',
+            expiresAt,
+            lastSentAt: new Date()
+          }
+        ],
+        opts
+      );
     });
 
     const existingUser = await User.findOne({ email: cleanEmail });
 
-    // Send email (test mode header honored in non-production)
+    // Send email AFTER transaction has committed
     const isMock = req.headers['x-test-mode'] === 'true' && !config.isProd;
     const emailResult = await sendOtpEmail({
       to: cleanEmail,
@@ -482,6 +493,11 @@ export const requestEmailOtp = async (req, res, next) => {
     });
 
     if (!emailResult.delivered) {
+      // Invalidate the OTP we just created so an orphaned active code is not left valid if delivery fails
+      await Otp.updateMany(
+        { email: cleanEmail, purpose: 'login', isUsed: false },
+        { $set: { isUsed: true } }
+      );
       if (emailResult.error === 'SMTP_NOT_CONFIGURED') {
         return res.status(503).json({
           success: false,
@@ -776,25 +792,34 @@ export const resendVerificationEmail = async (req, res, next) => {
       });
     }
 
-    await Otp.updateMany(
-      { email: cleanEmail, purpose: 'email_verification', isUsed: false },
-      { $set: { isUsed: true } }
-    );
-
     const plainOtp = crypto.randomInt(100000, 1000000).toString();
     const otpHash = hashSecret(plainOtp);
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    await Otp.create({
-      email: cleanEmail,
-      otpHash,
-      purpose: 'email_verification',
-      expiresAt,
-      lastSentAt: new Date()
+    // Atomically invalidate prior OTPs and create new OTP inside transaction
+    await runInTransaction(async (session) => {
+      const opts = session ? { session } : {};
+      await Otp.updateMany(
+        { email: cleanEmail, purpose: 'email_verification', isUsed: false },
+        { $set: { isUsed: true } },
+        opts
+      );
+      await Otp.create(
+        [
+          {
+            email: cleanEmail,
+            otpHash,
+            purpose: 'email_verification',
+            expiresAt,
+            lastSentAt: new Date()
+          }
+        ],
+        opts
+      );
     });
 
     const isMock = req.headers['x-test-mode'] === 'true' && !config.isProd;
-    await sendOtpEmail({
+    const emailResult = await sendOtpEmail({
       to: cleanEmail,
       name: user.name,
       otp: plainOtp,
@@ -802,6 +827,18 @@ export const resendVerificationEmail = async (req, res, next) => {
       expiresMinutes: 15,
       isMockMode: isMock
     });
+
+    if (!emailResult.delivered && !isMock) {
+      await Otp.updateMany(
+        { email: cleanEmail, purpose: 'email_verification', isUsed: false },
+        { $set: { isUsed: true } }
+      );
+      return res.status(502).json({
+        success: false,
+        code: 'EMAIL_SEND_FAILED',
+        message: 'Failed to deliver verification email.'
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -859,21 +896,30 @@ export const forgotPassword = async (req, res, next) => {
       });
     }
 
-    await Otp.updateMany(
-      { email: cleanEmail, purpose: 'reset_password', isUsed: false },
-      { $set: { isUsed: true } }
-    );
-
     const plainOtp = crypto.randomInt(100000, 1000000).toString();
     const otpHash = hashSecret(plainOtp);
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    await Otp.create({
-      email: cleanEmail,
-      otpHash,
-      purpose: 'reset_password',
-      expiresAt,
-      lastSentAt: new Date()
+    // Atomically invalidate prior reset OTPs and create new OTP inside transaction
+    await runInTransaction(async (session) => {
+      const opts = session ? { session } : {};
+      await Otp.updateMany(
+        { email: cleanEmail, purpose: 'reset_password', isUsed: false },
+        { $set: { isUsed: true } },
+        opts
+      );
+      await Otp.create(
+        [
+          {
+            email: cleanEmail,
+            otpHash,
+            purpose: 'reset_password',
+            expiresAt,
+            lastSentAt: new Date()
+          }
+        ],
+        opts
+      );
     });
 
     const emailResult = await sendOtpEmail({
@@ -886,6 +932,10 @@ export const forgotPassword = async (req, res, next) => {
     });
 
     if (!emailResult.delivered && !isMock) {
+      await Otp.updateMany(
+        { email: cleanEmail, purpose: 'reset_password', isUsed: false },
+        { $set: { isUsed: true } }
+      );
       return res.status(502).json({
         success: false,
         code: 'EMAIL_SEND_FAILED',
@@ -1223,6 +1273,8 @@ export const logoutAll = async (req, res, next) => {
       { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: 'LOGOUT_ALL' } }
     );
 
+    await User.findByIdAndUpdate(req.user._id, { $inc: { tokenVersion: 1 } });
+
     clearAuthCookies(res);
 
     res.status(200).json({
@@ -1255,6 +1307,59 @@ export const getActiveSessions = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// @desc    Get current session without throwing 401 on initial unauthenticated visit
+// @route   GET /api/auth/session
+// @access  Public
+export const getSession = async (req, res) => {
+  const token =
+    req.cookies?.tm_access_token ||
+    (req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization.split(' ')[1] : null);
+
+  if (!token) {
+    return res.status(200).json({
+      success: true,
+      authenticated: false,
+      user: null
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(token, getValidatedJwtSecret(), {
+      issuer: config.jwt.issuer,
+      audience: config.jwt.audience
+    });
+    const user = await User.findById(decoded.id).select('-password');
+    if (!user || user.isDeleted) {
+      return res.status(200).json({
+        success: true,
+        authenticated: false,
+        user: null
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      authenticated: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        theme: user.theme,
+        avatar: user.avatar,
+        authProviders: user.authProviders,
+        isEmailVerified: user.isEmailVerified,
+        currentOrganization: user.currentOrganization
+      }
+    });
+  } catch {
+    return res.status(200).json({
+      success: true,
+      authenticated: false,
+      user: null
+    });
   }
 };
 
@@ -1357,6 +1462,191 @@ export const updateProfile = async (req, res, next) => {
         authProviders: user.authProviders,
         isEmailVerified: user.isEmailVerified
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Change authenticated user email address
+// @route   PATCH /api/auth/email
+// @access  Private
+export const changeEmail = async (req, res, next) => {
+  try {
+    const { newEmail } = req.body || {};
+    const password = req.body?.password || req.body?.currentPassword;
+
+    if (!newEmail || !isValidEmail(newEmail)) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Please provide a valid new email address'
+      });
+    }
+
+    const cleanEmail = normalizeEmail(newEmail);
+    const user = await User.findById(req.user._id).select('+password');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (user.email === cleanEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'The new email address cannot be the same as your current email'
+      });
+    }
+
+    // Verify password if user has password
+    if (user.password) {
+      if (!password) {
+        return res.status(400).json({
+          success: false,
+          message: 'Password confirmation is required to change email'
+        });
+      }
+      const isMatch = await user.matchPassword(password);
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: 'Incorrect password'
+        });
+      }
+    }
+
+    // Check if new email is already in use
+    const existing = await User.findOne({ email: cleanEmail, _id: { $ne: user._id } });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        code: 'EMAIL_ALREADY_EXISTS',
+        message: 'An account with that email address already exists'
+      });
+    }
+
+    user.email = cleanEmail;
+    user.isEmailVerified = false;
+    await user.save();
+
+    // Invalidate prior email verification OTPs and issue new OTP
+    const plainOtp = crypto.randomInt(100000, 1000000).toString();
+    const otpHash = hashSecret(plainOtp);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await Otp.updateMany(
+      { email: cleanEmail, purpose: 'email_verification', isUsed: false },
+      { $set: { isUsed: true } }
+    );
+    await Otp.create({
+      email: cleanEmail,
+      otpHash,
+      purpose: 'email_verification',
+      expiresAt,
+      lastSentAt: new Date()
+    });
+
+    const isMock = req.headers['x-test-mode'] === 'true' && !config.isProd;
+    await sendOtpEmail({
+      to: cleanEmail,
+      name: user.name,
+      otp: plainOtp,
+      purpose: 'login',
+      expiresMinutes: 15,
+      isMockMode: isMock
+    }).catch(() => {});
+
+    res.status(200).json({
+      success: true,
+      message: 'Email updated successfully. A verification code has been sent to your new email.',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        isEmailVerified: false
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Permanently delete account and all personal data (GDPR Art. 17 Right to Erasure)
+// @route   DELETE /api/auth/account
+// @access  Private
+export const deleteAccount = async (req, res, next) => {
+  try {
+    const confirmation = req.body?.confirmation;
+    const password = req.body?.password || req.body?.currentPassword;
+    const userId = req.user._id;
+
+    if (confirmation !== 'DELETE') {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide confirmation="DELETE" to permanently delete your account'
+      });
+    }
+
+    const user = await User.findById(userId).select('+password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (user.password) {
+      if (!password) {
+        return res.status(400).json({
+          success: false,
+          message: 'Password confirmation is required to delete your account'
+        });
+      }
+      const isMatch = await user.matchPassword(password);
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: 'Incorrect password. Account deletion aborted.'
+        });
+      }
+    }
+
+    // Final Owner Protection: Check if user is sole owner of organizations with active members
+    const ownedMemberships = await Membership.find({ user: userId, role: 'owner' }).lean();
+    for (const om of ownedMemberships) {
+      const otherMembersCount = await Membership.countDocuments({
+        organization: om.organization,
+        user: { $ne: userId }
+      });
+      if (otherMembersCount > 0) {
+        return res.status(400).json({
+          success: false,
+          code: 'OWNER_CANNOT_DELETE_ACCOUNT_WITH_ACTIVE_MEMBERS',
+          message: 'You are the owner of an organization with active team members. Please transfer organization ownership before deleting your account.'
+        });
+      }
+    }
+
+    // 1. Purge all user sessions
+    await Session.deleteMany({ user: userId });
+
+    // 2. Remove memberships
+    await Membership.deleteMany({ user: userId });
+
+    // 3. Unassign user from all organization tasks to prevent dangling references
+    await Task.updateMany({ assignedTo: userId }, { assignedTo: null });
+
+    // 4. Purge personal tasks created by user in their primary workspace
+    await Task.deleteMany({ user: userId, organization: user.currentOrganization });
+
+    // 5. Delete the User record
+    await User.findByIdAndDelete(userId);
+
+    // 6. Clear auth cookies
+    res.clearCookie('tm_access_token', { path: '/' });
+    res.clearCookie('tm_refresh_token', { path: '/api' });
+    res.clearCookie('tm_csrf_token', { path: '/' });
+
+    res.status(200).json({
+      success: true,
+      message: 'Your account and personal data have been permanently deleted.'
     });
   } catch (error) {
     next(error);

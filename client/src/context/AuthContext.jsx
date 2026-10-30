@@ -114,13 +114,16 @@ export const AuthProvider = ({ children }) => {
 
     const checkAuthStatus = async () => {
       try {
-        const response = await api.get('/auth/me');
-        if (isMounted && response.data.success && response.data.user) {
+        const response = await api.get('/auth/session');
+        const isAuthenticated = response.data?.authenticated ?? response.data?.success;
+        if (isMounted && isAuthenticated && response.data?.user) {
           handleAuthenticatedUser(response.data.user);
           await fetchOrganizations();
+        } else if (isMounted) {
+          setUser(null);
         }
       } catch (err) {
-        // Not authenticated or session expired
+        // Not authenticated or network issue
         if (isMounted) {
           setUser(null);
         }

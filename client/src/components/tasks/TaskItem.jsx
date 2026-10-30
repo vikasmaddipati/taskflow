@@ -6,16 +6,25 @@ import {
   Clock,
   Edit3,
   Trash2,
-  AlertCircle
+  AlertCircle,
+  CheckSquare,
+  Repeat,
+  Paperclip
 } from 'lucide-react';
 
 export const TaskItem = ({
   task,
   onToggleStatus,
   onEdit,
-  onDelete
+  onDelete,
+  isSelected = false,
+  onToggleSelect = null
 }) => {
   const isCompleted = task.status === 'completed';
+  const subtasks = Array.isArray(task.subtasks) ? task.subtasks : [];
+  const completedSubtasksCount = subtasks.filter((s) => s.isCompleted).length;
+  const attachmentsCount = Array.isArray(task.attachments) ? task.attachments.length : 0;
+  const isRecurring = Boolean(task.recurrence?.isRecurring && task.recurrence?.frequency !== 'none');
 
   // Accurate calendar day evaluation in user local timezone
   const getDueDateInfo = (task) => {
@@ -84,7 +93,18 @@ export const TaskItem = ({
       }`}
     >
       {/* Left section: Checkbox, Title, Details */}
-      <div className="flex items-start gap-3.5 flex-1 min-w-0 w-full sm:w-auto">
+      <div className="flex items-start gap-3 flex-1 min-w-0 w-full sm:w-auto">
+        {/* Multi-select Checkbox */}
+        {onToggleSelect && (
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => onToggleSelect(task._id)}
+            className="mt-1 w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700 dark:bg-slate-800 cursor-pointer"
+            title="Select task for bulk actions"
+          />
+        )}
+
         {/* Toggle Checkbox Button */}
         <button
           type="button"
@@ -121,11 +141,31 @@ export const TaskItem = ({
               {task.priority || 'Medium'}
             </span>
 
+            {/* Status indicator if in_progress or review */}
+            {task.status === 'in_progress' && (
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full border bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900">
+                In Progress
+              </span>
+            )}
+            {task.status === 'review' && (
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-900">
+                Review
+              </span>
+            )}
+
             {/* Category Tag */}
             {task.category && (
               <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md font-medium">
                 <Tag className="w-3 h-3 text-slate-400" />
                 {task.category}
+              </span>
+            )}
+
+            {/* Recurrence Badge */}
+            {isRecurring && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
+                <Repeat className="w-3 h-3" />
+                <span className="capitalize">{task.recurrence.frequency}</span>
               </span>
             )}
           </div>
@@ -137,9 +177,9 @@ export const TaskItem = ({
             </p>
           )}
 
-          {/* Due date badge */}
-          {dueInfo && (
-            <div className="flex items-center gap-1.5 mt-2 text-xs">
+          {/* Badges container: Due date, Subtask checklist progress, Attachments */}
+          <div className="flex items-center gap-3 mt-2 flex-wrap text-xs">
+            {dueInfo && (
               <div
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-medium text-[11px] ${
                   dueInfo.isOverdue
@@ -156,8 +196,24 @@ export const TaskItem = ({
                 )}
                 <span>Due {dueInfo.label}</span>
               </div>
-            </div>
-          )}
+            )}
+
+            {subtasks.length > 0 && (
+              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-medium text-[11px] text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">
+                <CheckSquare className="w-3 h-3 text-slate-400" />
+                <span>
+                  {completedSubtasksCount}/{subtasks.length} subtasks
+                </span>
+              </div>
+            )}
+
+            {attachmentsCount > 0 && (
+              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-medium text-[11px] text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">
+                <Paperclip className="w-3 h-3 text-slate-400" />
+                <span>{attachmentsCount} file{attachmentsCount > 1 ? 's' : ''}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

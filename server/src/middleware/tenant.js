@@ -13,12 +13,13 @@ export const resolveTenant = async (req, res, next) => {
     }
 
     const explicitlyRequestedOrgId = req.headers['x-organization-id'] || req.query.organizationId;
-    const requestedOrgId = explicitlyRequestedOrgId || req.user.currentOrganization;
+    const rawOrgId = explicitlyRequestedOrgId || req.user.currentOrganization;
+    const requestedOrgId = rawOrgId ? String(rawOrgId) : null;
 
     let organization = null;
     let membership = null;
 
-    if (requestedOrgId && requestedOrgId.match(/^[0-9a-fA-F]{24}$/)) {
+    if (requestedOrgId && /^[0-9a-fA-F]{24}$/.test(requestedOrgId)) {
       membership = await Membership.findOne({
         organization: requestedOrgId,
         user: req.user._id
@@ -48,31 +49,44 @@ export const resolveTenant = async (req, res, next) => {
 
     // If user has zero organizations, auto-provision personal organization
     if (!organization) {
-      const slug = `org-${req.user._id.toString().slice(-6)}-${Date.now().toString().slice(-4)}`;
-      organization = await Organization.create({
-        name: `${req.user.name}'s Workspace`,
-        slug,
-        owner: req.user._id,
-        isPersonal: true,
-        plan: 'free'
-      });
+      try {
+        const slug = `org-${req.user._id.toString().slice(-6)}-${Date.now().toString().slice(-4)}`;
+        organization = await Organization.create({
+          name: `${req.user.name}'s Workspace`,
+          slug,
+          owner: req.user._id,
+          isPersonal: true,
+          plan: 'free'
+        });
 
-      membership = await Membership.create({
-        organization: organization._id,
-        user: req.user._id,
-        role: 'owner'
-      });
+        membership = await Membership.create({
+          organization: organization._id,
+          user: req.user._id,
+          role: 'owner'
+        });
 
-      // Create default workspace
-      await Workspace.create({
-        organization: organization._id,
-        name: 'General',
-        isDefault: true,
-        createdBy: req.user._id
-      });
+        // Create default workspace
+        await Workspace.create({
+          organization: organization._id,
+          name: 'General',
+          isDefault: true,
+          isArchived: false,
+          createdBy: req.user._id
+        });
 
-      req.user.currentOrganization = organization._id;
-      await req.user.save({ validateBeforeSave: false });
+        req.user.currentOrganization = organization._id;
+        await req.user.save({ validateBeforeSave: false });
+      } catch (provErr) {
+        // Race condition recovery: another concurrent request created the personal org
+        membership = await Membership.findOne({ user: req.user._id })
+          .sort({ role: 1, createdAt: 1 })
+          .populate('organization');
+        if (membership && membership.organization) {
+          organization = membership.organization;
+        } else {
+          throw provErr;
+        }
+      }
     }
 
     req.organization = organization;
@@ -80,16 +94,17 @@ export const resolveTenant = async (req, res, next) => {
     req.orgRole = membership ? membership.role : 'guest';
 
     // Resolve active Workspace context within organization
-    const requestedWorkspaceId =
+    const rawWorkspaceId =
       req.headers['x-workspace-id'] ||
       req.query.workspaceId;
+    const requestedWorkspaceId = rawWorkspaceId ? String(rawWorkspaceId) : null;
 
     let workspace = null;
-    if (requestedWorkspaceId && requestedWorkspaceId.match(/^[0-9a-fA-F]{24}$/)) {
+    if (requestedWorkspaceId && /^[0-9a-fA-F]{24}$/.test(requestedWorkspaceId)) {
       workspace = await Workspace.findOne({
         _id: requestedWorkspaceId,
         organization: organization._id,
-        isArchived: false
+        isArchived: { $ne: true }
       });
     }
 
@@ -97,18 +112,36 @@ export const resolveTenant = async (req, res, next) => {
       // Fallback to default or first active workspace in this organization
       workspace = await Workspace.findOne({
         organization: organization._id,
-        isArchived: false
+        isArchived: { $ne: true }
+      }).sort({ isDefault: -1, createdAt: 1 });
+    }
+
+    if (!workspace) {
+      // Secondary fallback: check if any workspace exists in this organization at all
+      workspace = await Workspace.findOne({
+        organization: organization._id
       }).sort({ isDefault: -1, createdAt: 1 });
     }
 
     // If still no workspace exists in the organization, create default 'General'
     if (!workspace) {
-      workspace = await Workspace.create({
-        organization: organization._id,
-        name: 'General',
-        isDefault: true,
-        createdBy: req.user._id
-      });
+      try {
+        workspace = await Workspace.create({
+          organization: organization._id,
+          name: 'General',
+          isDefault: true,
+          isArchived: false,
+          createdBy: req.user._id
+        });
+      } catch (wsErr) {
+        if (wsErr.code === 11000) {
+          workspace = await Workspace.findOne({
+            organization: organization._id
+          });
+        } else {
+          throw wsErr;
+        }
+      }
     }
 
     req.workspace = workspace;

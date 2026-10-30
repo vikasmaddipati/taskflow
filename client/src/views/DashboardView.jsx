@@ -7,7 +7,8 @@ import {
   Layers,
   ArrowRight,
   TrendingUp,
-  Plus
+  Plus,
+  Sparkles
 } from 'lucide-react';
 import api from '../services/api';
 import { TaskItem } from '../components/tasks/TaskItem';
@@ -42,7 +43,11 @@ export const DashboardView = ({
       setError(null);
       const res = await api.get('/tasks/stats');
       if (res.data.success) {
-        setData(res.data);
+        setData({
+          stats: res.data.stats || res.data,
+          recentTasks: res.data.recentTasks || res.data.stats?.recentTasks || [],
+          upcomingDeadlines: res.data.upcomingDeadlines || res.data.stats?.upcomingDeadlines || []
+        });
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load dashboard metrics');
@@ -97,13 +102,20 @@ export const DashboardView = ({
             {stats.overdue > 0 && ` ${stats.overdue} overdue.`}
           </p>
 
-          <div className="mt-5 flex items-center gap-3">
+          <div className="mt-5 flex flex-wrap items-center gap-3">
             <button
               onClick={onOpenCreateModal}
               className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white text-indigo-700 hover:bg-indigo-50 text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
               Create Task
+            </button>
+            <button
+              onClick={() => onNavigate('ai')}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-purple-500/80 hover:bg-purple-500 text-white text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95 border border-purple-300/30"
+            >
+              <Sparkles className="w-4 h-4" />
+              AI Assistant
             </button>
             <button
               onClick={() => onNavigate('today')}

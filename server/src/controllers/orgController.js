@@ -7,6 +7,13 @@ import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
 import Task from '../models/Task.js';
 import Team from '../models/Team.js';
+import Category from '../models/Category.js';
+import Notification from '../models/Notification.js';
+import Subscription from '../models/Subscription.js';
+import Invoice from '../models/Invoice.js';
+import WebhookSubscription from '../models/WebhookSubscription.js';
+import { dispatchWebhookEvent } from '../services/webhookDispatcher.js';
+import { deleteMultipleStoredFiles } from '../services/storageService.js';
 import { getOrgPlan } from '../config/plans.js';
 import { ROLES, ROLE_HIERARCHY } from '../config/permissions.js';
 
@@ -284,13 +291,25 @@ export const deleteOrganization = async (req, res, next) => {
       });
     }
 
-    // Cascade delete tenant-owned records
+    // 1. Clean up physical attachment files on disk
+    const tenantTasks = await Task.find({ organization: org._id }).select('attachments').lean();
+    const allFilenames = tenantTasks.flatMap((t) => (t.attachments || []).map((a) => a.filename)).filter(Boolean);
+    if (allFilenames.length > 0) {
+      await deleteMultipleStoredFiles(allFilenames);
+    }
+
+    // 2. Cascade delete all tenant-owned records across all collections
     await Promise.all([
       Task.deleteMany({ organization: org._id }),
       Workspace.deleteMany({ organization: org._id }),
       Team.deleteMany({ organization: org._id }),
       Invitation.deleteMany({ organization: org._id }),
       Membership.deleteMany({ organization: org._id }),
+      Category.deleteMany({ organization: org._id }),
+      Notification.deleteMany({ organization: org._id }),
+      AuditLog.deleteMany({ organization: org._id }),
+      Subscription.deleteMany({ organization: org._id }),
+      Invoice.deleteMany({ organization: org._id }),
       Organization.findByIdAndDelete(org._id)
     ]);
 
@@ -666,6 +685,12 @@ export const removeMember = async (req, res, next) => {
 
     await Membership.findByIdAndDelete(targetMembership._id);
 
+    // Unassign tasks previously assigned to the removed member to prevent dangling references
+    await Task.updateMany(
+      { organization: orgId, assignedTo: userId },
+      { assignedTo: null }
+    );
+
     await AuditLog.create({
       organization: orgId,
       actor: req.user._id,
@@ -702,6 +727,12 @@ export const leaveOrganization = async (req, res, next) => {
     }
 
     await Membership.findByIdAndDelete(membership._id);
+
+    // Unassign tasks previously assigned to the departing member
+    await Task.updateMany(
+      { organization: org._id, assignedTo: req.user._id },
+      { assignedTo: null }
+    );
 
     await AuditLog.create({
       organization: org._id,
@@ -756,5 +787,139 @@ export const getAuditLogs = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// @desc    Get registered outgoing webhooks for active organization
+// @route   GET /api/organizations/:id/webhooks
+// @access  Private (Admin / Owner)
+export const getOrganizationWebhooks = async (req, res, next) => {
+  try {
+    const orgId = req.organization._id;
+    const webhooks = await WebhookSubscription.find({ organization: orgId }).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: webhooks.length,
+      webhooks
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Register a new outgoing webhook endpoint
+// @route   POST /api/organizations/:id/webhooks
+// @access  Private (Admin / Owner)
+export const createOrganizationWebhook = async (req, res, next) => {
+  try {
+    const orgId = req.organization._id;
+    const { url, events } = req.body;
+
+    if (!url || !url.trim() || !/^https?:\/\//i.test(url.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid HTTP/HTTPS webhook URL is required'
+      });
+    }
+
+    const cleanUrl = url.trim();
+    const eventList = Array.isArray(events) && events.length > 0 ? events : ['task.created', 'task.updated', 'task.deleted'];
+    const generatedSecret = `whsec_${crypto.randomBytes(24).toString('hex')}`;
+
+    const webhook = await WebhookSubscription.create({
+      organization: orgId,
+      url: cleanUrl,
+      events: eventList,
+      secret: generatedSecret,
+      isActive: true,
+      createdBy: req.user._id
+    });
+
+    await AuditLog.create({
+      organization: orgId,
+      actor: req.user._id,
+      action: 'organization.webhook_created',
+      targetType: 'WebhookSubscription',
+      targetId: webhook._id.toString(),
+      details: { url: cleanUrl, events: eventList },
+      ipAddress: req.ip
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Outgoing webhook registered successfully',
+      webhook
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Delete outgoing webhook endpoint
+// @route   DELETE /api/organizations/:id/webhooks/:webhookId
+// @access  Private (Admin / Owner)
+export const deleteOrganizationWebhook = async (req, res, next) => {
+  try {
+    const orgId = req.organization._id;
+    const { webhookId } = req.params;
+
+    const webhook = await WebhookSubscription.findOneAndDelete({
+      _id: webhookId,
+      organization: orgId
+    });
+
+    if (!webhook) {
+      return res.status(404).json({ success: false, message: 'Webhook subscription not found' });
+    }
+
+    await AuditLog.create({
+      organization: orgId,
+      actor: req.user._id,
+      action: 'organization.webhook_deleted',
+      targetType: 'WebhookSubscription',
+      targetId: webhook._id.toString(),
+      details: { url: webhook.url },
+      ipAddress: req.ip
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Webhook subscription removed'
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Test outgoing webhook delivery
+// @route   POST /api/organizations/:id/webhooks/:webhookId/test
+// @access  Private (Admin / Owner)
+export const testOrganizationWebhook = async (req, res, next) => {
+  try {
+    const orgId = req.organization._id;
+    const { webhookId } = req.params;
+
+    const webhook = await WebhookSubscription.findOne({
+      _id: webhookId,
+      organization: orgId
+    });
+
+    if (!webhook) {
+      return res.status(404).json({ success: false, message: 'Webhook subscription not found' });
+    }
+
+    await dispatchWebhookEvent(orgId, 'webhook.ping', {
+      ping: true,
+      timestamp: new Date().toISOString(),
+      organizationId: orgId
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Test ping dispatched to webhook endpoint'
+    });
+  } catch (err) {
+    next(err);
   }
 };

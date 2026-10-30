@@ -18,6 +18,10 @@ export const protect = async (req, res, next) => {
   ) {
     token = req.headers.authorization.split(' ')[1];
   }
+  // 3. Fall back to query param for authenticated media/file downloads (e.g. browser anchor downloads)
+  else if (req.query && req.query.token) {
+    token = req.query.token;
+  }
 
   if (!token) {
     return res.status(401).json({
@@ -80,6 +84,19 @@ export const protect = async (req, res, next) => {
         success: false,
         code: 'TOKEN_INVALIDATED',
         message: 'Password was recently changed. Please log in again.'
+      });
+    }
+
+    // Check token version against user token version for revoked sessions
+    if (
+      decoded.tokenVersion !== undefined &&
+      user.tokenVersion !== undefined &&
+      decoded.tokenVersion < user.tokenVersion
+    ) {
+      return res.status(401).json({
+        success: false,
+        code: 'TOKEN_REVOKED',
+        message: 'This session has been revoked. Please log in again.'
       });
     }
 

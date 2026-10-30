@@ -38,7 +38,7 @@ const taskSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'completed'],
+      enum: ['pending', 'in_progress', 'review', 'completed'],
       default: 'pending'
     },
     dueDate: {
@@ -50,6 +50,79 @@ const taskSchema = new mongoose.Schema(
       default: null,
       index: true
     },
+    remindedAt: {
+      type: Date,
+      default: null
+    },
+    recurrence: {
+      isRecurring: {
+        type: Boolean,
+        default: false
+      },
+      frequency: {
+        type: String,
+        enum: ['none', 'daily', 'weekly', 'monthly'],
+        default: 'none'
+      },
+      interval: {
+        type: Number,
+        default: 1
+      },
+      nextRunDate: {
+        type: Date,
+        default: null
+      }
+    },
+    subtasks: [
+      {
+        title: {
+          type: String,
+          required: true,
+          trim: true,
+          maxlength: 200
+        },
+        isCompleted: {
+          type: Boolean,
+          default: false
+        },
+        completedAt: {
+          type: Date,
+          default: null
+        }
+      }
+    ],
+    attachments: [
+      {
+        filename: {
+          type: String,
+          required: true
+        },
+        originalName: {
+          type: String,
+          required: true
+        },
+        mimeType: {
+          type: String,
+          required: true
+        },
+        size: {
+          type: Number,
+          required: true
+        },
+        url: {
+          type: String,
+          required: true
+        },
+        uploadedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User'
+        },
+        uploadedAt: {
+          type: Date,
+          default: Date.now
+        }
+      }
+    ],
     category: {
       type: String,
       trim: true,
@@ -105,6 +178,12 @@ const taskSchema = new mongoose.Schema(
     deletedAt: {
       type: Date,
       default: null
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true
     }
   },
   {
@@ -112,12 +191,19 @@ const taskSchema = new mongoose.Schema(
   }
 );
 
-// High-performance compound indexes for multi-tenant queries
+// High-performance compound indexes for multi-tenant queries and data integrity
 taskSchema.index({ organization: 1, isDeleted: 1, status: 1 });
 taskSchema.index({ organization: 1, isDeleted: 1, dueDateString: 1 });
 taskSchema.index({ organization: 1, isDeleted: 1, priority: 1 });
+taskSchema.index({ organization: 1, isDeleted: 1, category: 1 });
+taskSchema.index({ organization: 1, isDeleted: 1, deletedAt: -1, _id: 1 });
+taskSchema.index({ organization: 1, isDeleted: 1, status: 1, createdAt: -1, _id: 1 });
+taskSchema.index({ organization: 1, workspace: 1, isDeleted: 1, createdAt: -1, _id: 1 });
 taskSchema.index({ organization: 1, isDeleted: 1, user: 1 });
 taskSchema.index({ user: 1, isDeleted: 1, createdAt: -1 });
+
+// Full-text search index for keyword queries on task title and description
+taskSchema.index({ title: 'text', description: 'text' });
 
 taskSchema.methods.toJSON = function () {
   const task = this.toObject();

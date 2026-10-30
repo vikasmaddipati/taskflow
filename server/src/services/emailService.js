@@ -3,6 +3,17 @@ import nodemailer from 'nodemailer';
 // In-memory store for automated test execution
 export const devOtpStore = new Map();
 
+// Custom transporter hook for test suites to inject mock or JSON transporters
+let customTransporter = null;
+
+export const setCustomTransporter = (transporter) => {
+  customTransporter = transporter;
+};
+
+export const resetCustomTransporter = () => {
+  customTransporter = null;
+};
+
 /**
  * Check if SMTP credentials are fully provided in environment
  */
@@ -111,8 +122,10 @@ export const sendOtpEmail = async ({ to, name, otp, purpose, expiresMinutes = 5,
     </html>
   `;
 
-  // If automated test environment simulation is enabled
-  if (process.env.MOCK_EMAIL === 'true' || isMockMode) {
+  const transporter = customTransporter || (isSmtpConfigured() ? getTransporter() : null);
+
+  // If automated test environment simulation is enabled (and no custom transporter is set)
+  if (!customTransporter && (process.env.MOCK_EMAIL === 'true' || isMockMode)) {
     devOtpStore.set(`${to.toLowerCase()}_${purpose}`, {
       otp,
       expiresAt: Date.now() + expiresMinutes * 60 * 1000
@@ -125,8 +138,8 @@ export const sendOtpEmail = async ({ to, name, otp, purpose, expiresMinutes = 5,
     };
   }
 
-  // Check if SMTP is configured
-  if (!isSmtpConfigured()) {
+  // Check if SMTP or custom transporter is configured
+  if (!transporter) {
     console.warn(
       `[EmailService] SMTP credentials not configured in server/.env. Unable to dispatch email to: ${to}`
     );
@@ -138,8 +151,6 @@ export const sendOtpEmail = async ({ to, name, otp, purpose, expiresMinutes = 5,
         'Email service is not configured on the server. Please set SMTP_HOST, SMTP_USER, and SMTP_PASS in server/.env to receive verification emails.'
     };
   }
-
-  const transporter = getTransporter();
 
   try {
     const fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER;
@@ -153,7 +164,9 @@ export const sendOtpEmail = async ({ to, name, otp, purpose, expiresMinutes = 5,
       html: htmlContent
     });
 
-    const accepted = info.accepted && info.accepted.length > 0;
+    const accepted = Array.isArray(info.accepted)
+      ? info.accepted.length > 0
+      : Boolean(info.messageId);
 
     if (!accepted) {
       console.error(

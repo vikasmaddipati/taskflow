@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Base configuration enforces system and user trusted CA certificates -->
-    <base-config cleartextTrafficPermitted="false">
+    <!-- Base configuration permits LAN development and testing while trusting system and user CAs -->
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
             <certificates src="user" />

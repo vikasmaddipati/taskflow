@@ -15,23 +15,32 @@ export const MyDayView = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchMyDayTasks = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await api.get('/tasks?view=today');
-      if (res.data.success) {
-        setTasks(res.data.tasks);
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load My Day tasks');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchMyDayTasks = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await api.get('/tasks?view=today', { signal: controller.signal });
+        if (res.data.success) {
+          setTasks(res.data.items || res.data.tasks || []);
+        }
+      } catch (err) {
+        if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+        setError(err.response?.data?.message || 'Failed to load My Day tasks');
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    };
+
     fetchMyDayTasks();
+
+    return () => {
+      controller.abort();
+    };
   }, [refreshTrigger]);
 
   const now = new Date();

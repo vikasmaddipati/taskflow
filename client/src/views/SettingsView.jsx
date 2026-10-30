@@ -11,7 +11,15 @@ import {
   Building2,
   Plus,
   Smartphone,
-  LogOut
+  LogOut,
+  Mail,
+  Download,
+  Trash2,
+  AlertTriangle,
+  FileText,
+  Webhook,
+  Send,
+  ExternalLink
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -19,7 +27,7 @@ import { getBaseURL } from '../services/api';
 import api from '../services/api';
 
 export const SettingsView = ({ showToast }) => {
-  const { user, updateProfile, fetchOrganizations, logout } = useAuth();
+  const { user, updateProfile, fetchOrganizations, logout, currentOrg } = useAuth();
   const { theme, setTheme } = useTheme();
 
   // Profile fields
@@ -27,9 +35,31 @@ export const SettingsView = ({ showToast }) => {
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState(null);
 
+  // Email change state
+  const [isChangingEmail, setIsChangingEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
+  const [emailMessage, setEmailMessage] = useState(null);
+
+  // Data Export state (GDPR Art. 20)
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Delete Account state (GDPR Art. 17)
+  const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
   // New Organization fields
   const [newOrgName, setNewOrgName] = useState('');
   const [isCreatingOrg, setIsCreatingOrg] = useState(false);
+
+  // Webhooks & Integrations state
+  const [webhooks, setWebhooks] = useState([]);
+  const [loadingWebhooks, setLoadingWebhooks] = useState(false);
+  const [newWebhookUrl, setNewWebhookUrl] = useState('');
+  const [isAddingWebhook, setIsAddingWebhook] = useState(false);
 
   // Active Sessions
   const [sessions, setSessions] = useState([]);
@@ -66,6 +96,97 @@ export const SettingsView = ({ showToast }) => {
       localStorage.removeItem('tm_api_url');
       setServerUrl(getBaseURL());
       showToast?.({ type: 'info', message: 'Reset to default API URL' });
+    }
+  };
+
+  // Handle Email Change
+  const handleChangeEmail = async (e) => {
+    e.preventDefault();
+    if (!newEmail.trim()) {
+      setEmailMessage({ type: 'error', text: 'Please enter a valid new email address' });
+      return;
+    }
+
+    setIsSubmittingEmail(true);
+    setEmailMessage(null);
+
+    try {
+      const res = await api.patch('/auth/email', {
+        newEmail: newEmail.trim(),
+        password: emailPassword || undefined
+      });
+
+      if (res.data.success) {
+        setEmailMessage({ type: 'success', text: res.data.message });
+        showToast?.({ type: 'success', message: 'Email address updated' });
+        setIsChangingEmail(false);
+        setNewEmail('');
+        setEmailPassword('');
+        if (res.data.user && user) {
+          user.email = res.data.user.email;
+          user.isEmailVerified = false;
+        }
+      }
+    } catch (err) {
+      setEmailMessage({ type: 'error', text: err.response?.data?.message || 'Failed to update email' });
+    } finally {
+      setIsSubmittingEmail(false);
+    }
+  };
+
+  // Handle Data Export (GDPR Art. 20 Data Portability)
+  const handleExportData = async (format = 'json') => {
+    try {
+      setIsExporting(true);
+      const res = await api.get(`/tasks/export?format=${format}`, {
+        responseType: format === 'csv' ? 'blob' : 'json'
+      });
+
+      const blob =
+        format === 'csv'
+          ? new Blob([res.data], { type: 'text/csv;charset=utf-8;' })
+          : new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `taskflow_tasks_export.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      showToast?.({ type: 'success', message: `Exported tasks as ${format.toUpperCase()}` });
+    } catch (err) {
+      showToast?.({ type: 'error', message: 'Failed to export data' });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Handle Account Deletion (GDPR Art. 17 Right to Erasure)
+  const handleDeleteAccount = async (e) => {
+    e.preventDefault();
+    if (deleteConfirmationText !== 'DELETE') {
+      showToast?.({ type: 'error', message: 'Please type DELETE to confirm' });
+      return;
+    }
+
+    setIsDeletingAccount(true);
+    try {
+      const res = await api.delete('/auth/account', {
+        data: {
+          confirmation: 'DELETE',
+          password: deletePassword || undefined
+        }
+      });
+
+      if (res.data.success) {
+        showToast?.({ type: 'info', message: 'Account permanently deleted' });
+        await logout();
+      }
+    } catch (err) {
+      showToast?.({ type: 'error', message: err.response?.data?.message || 'Failed to delete account' });
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -122,6 +243,67 @@ export const SettingsView = ({ showToast }) => {
       showToast?.({ type: 'error', message: err.response?.data?.message || 'Failed to create organization' });
     } finally {
       setIsCreatingOrg(false);
+    }
+  };
+
+  // Fetch webhooks when organization changes
+  useEffect(() => {
+    if (currentOrg?._id) {
+      setLoadingWebhooks(true);
+      api.get(`/organizations/${currentOrg._id}/webhooks`)
+        .then((res) => {
+          if (res.data.success) {
+            setWebhooks(res.data.webhooks || []);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoadingWebhooks(false));
+    }
+  }, [currentOrg?._id]);
+
+  const handleCreateWebhook = async (e) => {
+    e.preventDefault();
+    if (!currentOrg?._id || !newWebhookUrl.trim()) return;
+    setIsAddingWebhook(true);
+    try {
+      const res = await api.post(`/organizations/${currentOrg._id}/webhooks`, {
+        url: newWebhookUrl.trim(),
+        events: ['task.created', 'task.updated', 'task.deleted']
+      });
+      if (res.data.success && res.data.webhook) {
+        setWebhooks((prev) => [res.data.webhook, ...prev]);
+        setNewWebhookUrl('');
+        showToast?.({ type: 'success', message: 'Webhook registered successfully!' });
+      }
+    } catch (err) {
+      showToast?.({ type: 'error', message: err.response?.data?.message || 'Failed to add webhook' });
+    } finally {
+      setIsAddingWebhook(false);
+    }
+  };
+
+  const handleDeleteWebhook = async (webhookId) => {
+    if (!currentOrg?._id || !webhookId) return;
+    try {
+      const res = await api.delete(`/organizations/${currentOrg._id}/webhooks/${webhookId}`);
+      if (res.data.success) {
+        setWebhooks((prev) => prev.filter((w) => w._id !== webhookId));
+        showToast?.({ type: 'success', message: 'Webhook subscription deleted' });
+      }
+    } catch (err) {
+      showToast?.({ type: 'error', message: err.response?.data?.message || 'Failed to delete webhook' });
+    }
+  };
+
+  const handleTestWebhook = async (webhookId) => {
+    if (!currentOrg?._id || !webhookId) return;
+    try {
+      const res = await api.post(`/organizations/${currentOrg._id}/webhooks/${webhookId}/test`);
+      if (res.data.success) {
+        showToast?.({ type: 'success', message: 'Test ping dispatched to webhook' });
+      }
+    } catch (err) {
+      showToast?.({ type: 'error', message: err.response?.data?.message || 'Failed to test webhook' });
     }
   };
 
@@ -218,18 +400,92 @@ export const SettingsView = ({ showToast }) => {
           </div>
         )}
 
-        <form onSubmit={handleProfileSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-              Email Address <span className="text-slate-400 text-xs font-normal">(Read only)</span>
-            </label>
-            <input
-              type="email"
-              disabled
-              value={user?.email || ''}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50 text-slate-500 text-sm cursor-not-allowed"
-            />
+        {emailMessage && (
+          <div
+            className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+              emailMessage.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+                : 'bg-rose-50 text-rose-800 dark:bg-rose-950/50 dark:text-rose-300'
+            }`}
+          >
+            {emailMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+            <span>{emailMessage.text}</span>
           </div>
+        )}
+
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Email Address
+            </label>
+            <button
+              type="button"
+              onClick={() => setIsChangingEmail(!isChangingEmail)}
+              className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              {isChangingEmail ? 'Cancel' : 'Change Email'}
+            </button>
+          </div>
+          <input
+            type="email"
+            disabled
+            value={user?.email || ''}
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50 text-slate-500 text-sm cursor-not-allowed"
+          />
+
+          {isChangingEmail && (
+            <form onSubmit={handleChangeEmail} className="mt-3 p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700/80 space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  New Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="name@company.com"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              {user?.authProviders?.includes('local') && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Current Password (for confirmation)
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Enter current password"
+                    value={emailPassword}
+                    onChange={(e) => setEmailPassword(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsChangingEmail(false)}
+                  className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingEmail}
+                  className="px-3.5 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                >
+                  {isSubmittingEmail ? 'Updating...' : 'Update Email'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+
+        <form onSubmit={handleProfileSubmit} className="space-y-4">
 
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
@@ -286,6 +542,90 @@ export const SettingsView = ({ showToast }) => {
             {isCreatingOrg ? 'Creating...' : 'Create Organization'}
           </button>
         </form>
+      </div>
+
+      {/* Outgoing Webhooks & Integrations Card */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-4">
+        <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl">
+            <Webhook className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Webhooks & External Integrations</h3>
+            <p className="text-xs text-slate-400">Dispatch real-time HMAC-signed webhooks to Slack, Discord, or Zapier</p>
+          </div>
+        </div>
+
+        {/* Add Webhook Form */}
+        <form onSubmit={handleCreateWebhook} className="flex flex-col sm:flex-row gap-3">
+          <input
+            type="url"
+            required
+            value={newWebhookUrl}
+            onChange={(e) => setNewWebhookUrl(e.target.value)}
+            placeholder="https://hooks.slack.com/services/... or https://api.yoursite.com/webhook"
+            className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+          />
+          <button
+            type="submit"
+            disabled={isAddingWebhook || !newWebhookUrl.trim()}
+            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs transition-colors shrink-0 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{isAddingWebhook ? 'Adding...' : 'Add Webhook'}</span>
+          </button>
+        </form>
+
+        {/* Webhooks List */}
+        {loadingWebhooks ? (
+          <div className="py-4 text-center text-xs text-slate-400">Loading webhooks...</div>
+        ) : webhooks.length === 0 ? (
+          <div className="py-4 text-center text-xs text-slate-400">
+            No active webhook subscriptions configured for this organization.
+          </div>
+        ) : (
+          <div className="space-y-2.5 pt-2">
+            {webhooks.map((wh) => (
+              <div
+                key={wh._id}
+                className="p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 flex items-center justify-between gap-3 text-xs flex-wrap"
+              >
+                <div className="space-y-1 min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{wh.url}</span>
+                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                      Active
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                    <span>Events: {(wh.events || []).join(', ')}</span>
+                    <span>•</span>
+                    <span className="font-mono text-slate-500">Secret: {wh.secret ? `${wh.secret.slice(0, 10)}...` : 'Configured'}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleTestWebhook(wh._id)}
+                    className="px-2.5 py-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg border border-indigo-200 dark:border-indigo-800 transition-colors inline-flex items-center gap-1"
+                  >
+                    <Send className="w-3 h-3" />
+                    <span>Test Ping</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteWebhook(wh._id)}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                    title="Delete webhook"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Active Sessions & Device Security */}
@@ -454,6 +794,143 @@ export const SettingsView = ({ showToast }) => {
           </div>
         </form>
       </div>
+
+      {/* GDPR Article 20: Data Portability & Export */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-4">
+        <div className="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl">
+            <Download className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Data Portability & Export (GDPR Art. 20)</h3>
+            <p className="text-xs text-slate-400">Download a complete copy of your tasks and workspace metadata</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          You can request a machine-readable archive of all your active tasks, priorities, tags, and timestamps anytime.
+        </p>
+
+        <div className="flex items-center gap-3 pt-1">
+          <button
+            type="button"
+            disabled={isExporting}
+            onClick={() => handleExportData('json')}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition"
+          >
+            <FileText className="w-4 h-4 text-indigo-500" />
+            {isExporting ? 'Exporting...' : 'Export as JSON'}
+          </button>
+          <button
+            type="button"
+            disabled={isExporting}
+            onClick={() => handleExportData('csv')}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition"
+          >
+            <Download className="w-4 h-4 text-emerald-500" />
+            {isExporting ? 'Exporting...' : 'Export as CSV'}
+          </button>
+        </div>
+      </div>
+
+      {/* GDPR Article 17: Right to Erasure / Danger Zone */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-rose-200 dark:border-rose-900/40 p-6 shadow-xs space-y-4">
+        <div className="flex items-center gap-3 pb-3 border-b border-rose-100 dark:border-rose-900/30">
+          <div className="p-2.5 bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-xl">
+            <Trash2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-rose-600 dark:text-rose-400">Danger Zone: Delete Account (GDPR Art. 17)</h3>
+            <p className="text-xs text-slate-400">Permanently delete your profile, workspaces, memberships, and personal tasks</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Once your account is deleted, your data cannot be recovered. Active subscriptions will be cancelled immediately.
+        </p>
+
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={() => setIsDeleteAccountModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-100 dark:hover:bg-rose-900/40 text-xs font-semibold transition"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Account Forever
+          </button>
+        </div>
+      </div>
+
+      {/* Delete Account Modal */}
+      {isDeleteAccountModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-rose-200 dark:border-rose-900/60 space-y-4">
+            <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/60 flex items-center justify-center text-rose-600">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Permanently Delete Account?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                This action is irreversible. All your personal tasks, sessions, and memberships will be erased.
+              </p>
+            </div>
+
+            <form onSubmit={handleDeleteAccount} className="space-y-3 pt-1">
+              {user?.authProviders?.includes('local') && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Enter Password to Confirm
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Your password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Type <span className="font-bold text-rose-600">DELETE</span> to confirm
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="DELETE"
+                  value={deleteConfirmationText}
+                  onChange={(e) => setDeleteConfirmationText(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDeleteAccountModalOpen(false);
+                    setDeleteConfirmationText('');
+                    setDeletePassword('');
+                  }}
+                  className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={deleteConfirmationText !== 'DELETE' || isDeletingAccount}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-40 rounded-xl transition shadow-xs"
+                >
+                  {isDeletingAccount ? 'Deleting...' : 'Confirm Delete Account'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

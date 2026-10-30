@@ -11,7 +11,14 @@
     "server:start": "cd server && npm start",
     "client": "cd client && npm run dev",
     "client:build": "cd client && npm run build",
-    "test:server": "cd server && npm test"
+    "test:server": "cd server && npm test",
+    "test:client": "cd client && npm test",
+    "test": "npm run test:server && npm run test:client",
+    "build": "cd client && npm run build",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
   },
   "keywords": [
     "mern",
@@ -23,5 +30,8 @@
     "tailwind"
   ],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "basic-ftp": "^6.2.4"
+  }
 }

@@ -16,3 +16,12 @@ createRoot(document.getElementById('root')).render(
     )}
   </StrictMode>
 );
+
+// Register Progressive Web App (PWA) Service Worker for offline shell and data caching
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && process.env.NODE_ENV !== 'test') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('[PWA] Service worker registration failed:', err);
+    });
+  });
+}

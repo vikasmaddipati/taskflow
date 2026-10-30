@@ -64,6 +64,10 @@ const userSchema = new mongoose.Schema(
     lastLoginAt: {
       type: Date,
       default: null
+    },
+    tokenVersion: {
+      type: Number,
+      default: 0
     }
   },
   {

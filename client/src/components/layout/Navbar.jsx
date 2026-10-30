@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Menu,
   Plus,
@@ -9,7 +9,13 @@ import {
   ChevronDown,
   Check,
   User as UserIcon,
-  Layers
+  Layers,
+  Bell,
+  Clock,
+  AlertCircle,
+  CheckCheck,
+  RefreshCw,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -19,7 +25,8 @@ export const Navbar = ({
   currentView,
   onOpenMobileMenu,
   onOpenCreateModal,
-  onOpenCreateOrgModal
+  onOpenCreateOrgModal,
+  onToggleAiCopilot
 }) => {
   const {
     user,
@@ -38,15 +45,77 @@ export const Navbar = ({
   const [newWsName, setNewWsName] = useState('');
   const [isCreatingWs, setIsCreatingWs] = useState(false);
 
+  // Notifications state
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isCheckingReminders, setIsCheckingReminders] = useState(false);
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await api.get('/notifications');
+      if (res.data.success) {
+        setNotifications(res.data.notifications || []);
+        setUnreadCount(res.data.unreadCount || 0);
+      }
+    } catch {
+      // ignore in background
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 60000); // 1-minute poll
+    return () => clearInterval(interval);
+  }, [fetchNotifications, currentOrg?._id]);
+
+  const handleMarkRead = async (id, e) => {
+    e.stopPropagation();
+    try {
+      const res = await api.patch(`/notifications/${id}/read`);
+      if (res.data.success) {
+        fetchNotifications();
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      const res = await api.post('/notifications/read-all');
+      if (res.data.success) {
+        fetchNotifications();
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleRunReminders = async () => {
+    setIsCheckingReminders(true);
+    try {
+      await api.post('/notifications/run-reminders');
+      await fetchNotifications();
+    } catch {
+      // ignore
+    } finally {
+      setIsCheckingReminders(false);
+    }
+  };
+
   const viewTitles = {
     dashboard: 'Dashboard Overview',
+    ai: 'AI Assistant & Scheduler',
     all: 'All Tasks',
+    board: 'Kanban Board',
     today: 'My Day',
     upcoming: 'Upcoming Tasks',
     completed: 'Completed Tasks',
     team: 'Team & Members',
     billing: 'Billing & Plans',
-    settings: 'Account Settings'
+    settings: 'Account Settings',
+    trash: 'Trash & Recovery'
   };
 
   const planBadgeStyles = {
@@ -238,8 +307,19 @@ export const Navbar = ({
         </h1>
       </div>
 
-      {/* Right side: New Task button, Theme Toggle, User, Logout */}
+      {/* Right side: AI Copilot, New Task button, Theme Toggle, User, Logout */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Quick AI Copilot Trigger */}
+        <button
+          type="button"
+          onClick={onToggleAiCopilot}
+          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 rounded-xl shadow-xs transition-all active:scale-95"
+          title="Open AI Copilot"
+        >
+          <Sparkles className="w-4 h-4" />
+          <span className="hidden sm:inline">AI Copilot</span>
+        </button>
+
         {/* Create Task button */}
         <button
           type="button"
@@ -249,6 +329,106 @@ export const Navbar = ({
           <Plus className="w-4 h-4 stroke-[2.5]" />
           <span className="hidden sm:inline">New Task</span>
         </button>
+
+        {/* Notifications Bell Dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsNotifOpen((prev) => !prev)}
+            className="relative p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title="Notifications"
+          >
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold text-white bg-rose-500 rounded-full ring-2 ring-white dark:ring-slate-900">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {isNotifOpen && (
+            <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 py-3 z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between px-4 pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-slate-900 dark:text-slate-100">Notifications</span>
+                  {unreadCount > 0 && (
+                    <span className="bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                      {unreadCount} new
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRunReminders}
+                    disabled={isCheckingReminders}
+                    className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50"
+                    title="Check task reminders"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isCheckingReminders ? 'animate-spin text-indigo-600' : ''}`} />
+                  </button>
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleMarkAllRead}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium inline-flex items-center gap-1"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5" />
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
+                {notifications.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    No notifications yet. You're all caught up!
+                  </div>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n._id}
+                      className={`p-3 transition-colors flex items-start justify-between gap-3 ${
+                        n.isRead
+                          ? 'bg-transparent text-slate-600 dark:text-slate-400'
+                          : 'bg-indigo-50/40 dark:bg-indigo-950/20 text-slate-900 dark:text-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                        {n.type === 'overdue' ? (
+                          <AlertCircle className="w-4 h-4 text-rose-500 mt-0.5 shrink-0" />
+                        ) : n.type === 'due_soon' ? (
+                          <Clock className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                        ) : (
+                          <Bell className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold leading-snug">{n.title}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">
+                            {n.message}
+                          </p>
+                          <span className="text-[10px] text-slate-400 mt-1 block">
+                            {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                      {!n.isRead && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleMarkRead(n._id, e)}
+                          className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium shrink-0 px-2 py-0.5 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-900/40"
+                        >
+                          Read
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Theme Toggle */}
         <button

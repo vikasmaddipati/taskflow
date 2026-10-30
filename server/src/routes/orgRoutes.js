@@ -14,7 +14,11 @@ import {
   updateMemberRole,
   removeMember,
   leaveOrganization,
-  getAuditLogs
+  getAuditLogs,
+  getOrganizationWebhooks,
+  createOrganizationWebhook,
+  deleteOrganizationWebhook,
+  testOrganizationWebhook
 } from '../controllers/orgController.js';
 import { protect } from '../middleware/auth.js';
 import { resolveTenant } from '../middleware/tenant.js';
@@ -54,5 +58,13 @@ router.post('/:id/invitations', requirePermission(PERMISSIONS.MEMBERS_INVITE), i
 router.delete('/:id/invitations/:invitationId', requirePermission(PERMISSIONS.MEMBERS_INVITE), revokeInvitation);
 
 router.get('/:id/audit-logs', requirePermission(PERMISSIONS.AUDIT_LOGS_READ), getAuditLogs);
+
+// Outgoing Webhooks Management (Admin / Owner)
+router.route('/:id/webhooks')
+  .get(requirePermission(PERMISSIONS.ORG_UPDATE), getOrganizationWebhooks)
+  .post(requirePermission(PERMISSIONS.ORG_UPDATE), createOrganizationWebhook);
+
+router.delete('/:id/webhooks/:webhookId', requirePermission(PERMISSIONS.ORG_UPDATE), deleteOrganizationWebhook);
+router.post('/:id/webhooks/:webhookId/test', requirePermission(PERMISSIONS.ORG_UPDATE), testOrganizationWebhook);
 
 export default router;

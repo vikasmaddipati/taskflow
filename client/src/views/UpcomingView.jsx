@@ -15,24 +15,35 @@ export const UpcomingView = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchUpcomingTasks = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      // Fetch upcoming: dueDate > today, sorted by dueDate ascending
-      const res = await api.get('/tasks?view=upcoming&sortBy=dueDate&sortOrder=asc');
-      if (res.data.success) {
-        setTasks(res.data.tasks);
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load upcoming tasks');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchUpcomingTasks = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        // Fetch upcoming: dueDate > today, sorted by dueDate ascending
+        const res = await api.get('/tasks?view=upcoming&sortBy=dueDate&sortOrder=asc', {
+          signal: controller.signal
+        });
+        if (res.data.success) {
+          setTasks(res.data.items || res.data.tasks || []);
+        }
+      } catch (err) {
+        if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+        setError(err.response?.data?.message || 'Failed to load upcoming tasks');
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    };
+
     fetchUpcomingTasks();
+
+    return () => {
+      controller.abort();
+    };
   }, [refreshTrigger]);
 
   return (

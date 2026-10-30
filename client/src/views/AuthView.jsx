@@ -329,6 +329,11 @@ export const AuthView = () => {
                   <strong>SMTP Setup Guide:</strong> To receive real OTP emails, open <code className="font-mono bg-white/60 dark:bg-black/30 px-1 py-0.5 rounded">server/.env</code> and configure your Gmail or SMTP credentials: <code className="font-mono bg-white/60 dark:bg-black/30 px-1 py-0.5 rounded">SMTP_HOST=smtp.gmail.com</code>, <code className="font-mono bg-white/60 dark:bg-black/30 px-1 py-0.5 rounded">SMTP_USER=your_email@gmail.com</code>, and <code className="font-mono bg-white/60 dark:bg-black/30 px-1 py-0.5 rounded">SMTP_PASS=your_16_char_app_password</code>.
                 </div>
               )}
+              {(displayError.toLowerCase().includes('database') || displayError.includes('MONGODB_URI')) && (
+                <div className="mt-1 p-2 bg-amber-100/60 dark:bg-amber-900/40 border border-amber-200/60 dark:border-amber-800/40 rounded-lg text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
+                  <strong>Database Setup Required:</strong> To enable account creation and data storage on your cPanel domain, add your free <strong>MongoDB Atlas</strong> connection string to <code className="font-mono bg-white/60 dark:bg-black/30 px-1 py-0.5 rounded">/home/taskflow/taskflow/.env</code> as <code className="font-mono bg-white/60 dark:bg-black/30 px-1 py-0.5 rounded">MONGODB_URI=mongodb+srv://...</code>.
+                </div>
+              )}
             </div>
           )}
 

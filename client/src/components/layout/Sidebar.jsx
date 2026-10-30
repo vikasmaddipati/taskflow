@@ -2,12 +2,14 @@ import React from 'react';
 import {
   LayoutDashboard,
   CheckSquare,
+  Columns,
   Sun,
   Calendar,
   CheckCircle2,
   Users,
   CreditCard,
   Settings,
+  Trash2,
   Sparkles,
   X
 } from 'lucide-react';
@@ -27,10 +29,22 @@ export const Sidebar = ({
       badge: null
     },
     {
+      id: 'ai',
+      label: 'AI Assistant',
+      icon: Sparkles,
+      badge: 'AI'
+    },
+    {
       id: 'all',
       label: 'All Tasks',
       icon: CheckSquare,
       badge: stats.total
+    },
+    {
+      id: 'board',
+      label: 'Kanban Board',
+      icon: Columns,
+      badge: null
     },
     {
       id: 'today',
@@ -66,6 +80,12 @@ export const Sidebar = ({
       id: 'settings',
       label: 'Settings',
       icon: Settings,
+      badge: null
+    },
+    {
+      id: 'trash',
+      label: 'Trash & Recovery',
+      icon: Trash2,
       badge: null
     }
   ];
@@ -127,10 +147,12 @@ export const Sidebar = ({
                 <span>{item.label}</span>
               </div>
 
-              {item.badge !== null && item.badge !== undefined && item.badge > 0 && (
+              {item.badge !== null && item.badge !== undefined && (typeof item.badge === 'string' || item.badge > 0) && (
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                    isActive
+                    typeof item.badge === 'string'
+                      ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-xs'
+                      : isActive
                       ? 'bg-white/20 text-white'
                       : 'bg-slate-800 text-slate-300'
                   }`}

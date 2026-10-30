@@ -57,8 +57,13 @@ async function runTests() {
       console.log('[Test Runner] No server detected on port 5000. Launching server automatically...');
       spawnedServer = spawn('node', ['src/server.js'], {
         cwd: path.resolve(__dirname, '..'),
-        stdio: 'pipe'
+        stdio: 'pipe',
+        env: { ...process.env, HOST: '127.0.0.1' }
       });
+
+      // Drain stdout and stderr to prevent OS pipe buffer deadlock on Windows/Linux
+      spawnedServer.stdout.on('data', () => {});
+      spawnedServer.stderr.on('data', () => {});
 
       let serverReady = false;
       for (let i = 0; i < 25; i++) {
@@ -430,6 +435,60 @@ async function runTests() {
       '19. Sign out from all devices revokes all active session records'
     );
 
+    // ---------------------------------------------------------
+    // 20. Email Service: Live Transporter Delivery Pathway
+    // ---------------------------------------------------------
+    const { sendOtpEmail, setCustomTransporter, resetCustomTransporter } = await import(
+      '../src/services/emailService.js'
+    );
+    const nodemailer = (await import('nodemailer')).default;
+
+    const jsonTransport = nodemailer.createTransport({ jsonTransport: true });
+    setCustomTransporter(jsonTransport);
+
+    const emailDelivery = await sendOtpEmail({
+      to: 'qa.auditor@taskflow.dev',
+      name: 'QA Auditor',
+      otp: '984512',
+      purpose: 'login',
+      expiresMinutes: 10
+    });
+
+    assert(
+      emailDelivery.success === true &&
+        emailDelivery.delivered === true &&
+        Boolean(emailDelivery.messageId),
+      '20. Email service renders and delivers OTP message via Nodemailer transport'
+    );
+
+    // ---------------------------------------------------------
+    // 21. Email Service: Transport Failure & Error Handling Pathway
+    // ---------------------------------------------------------
+    const failingTransport = {
+      sendMail: async () => {
+        const error = new Error('Connection timeout to SMTP gateway');
+        error.code = 'ETIMEDOUT';
+        throw error;
+      }
+    };
+    setCustomTransporter(failingTransport);
+
+    const emailFailure = await sendOtpEmail({
+      to: 'invalid-gateway@taskflow.dev',
+      name: 'Failure Test',
+      otp: '123456',
+      purpose: 'reset_password'
+    });
+
+    assert(
+      emailFailure.success === false &&
+        emailFailure.delivered === false &&
+        emailFailure.error === 'ETIMEDOUT',
+      '21. Email service cleanly catches and returns structured failure on SMTP transport error'
+    );
+
+    resetCustomTransporter();
+
     console.log(`\n================================================================`);
     console.log(` Test Execution Complete: ${passed} passed, ${failed} failed.`);
     console.log(`================================================================`);
@@ -444,6 +503,7 @@ async function runTests() {
       console.log('[Test Runner] Shutting down spawned test server...');
       try {
         spawnedServer.kill();
+        await new Promise((r) => setTimeout(r, 200));
       } catch (e) {
         // ignore
       }

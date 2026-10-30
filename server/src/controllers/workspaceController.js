@@ -210,6 +210,15 @@ export const deleteWorkspace = async (req, res, next) => {
     workspace.isArchived = true;
     await workspace.save();
 
+    // Re-assign active tasks from the archived workspace to the default workspace so tasks don't get orphaned
+    const defaultWorkspace = await Workspace.findOne({ organization: orgId, isDefault: true });
+    if (defaultWorkspace) {
+      await Task.updateMany(
+        { workspace: workspace._id, organization: orgId },
+        { workspace: defaultWorkspace._id }
+      );
+    }
+
     await AuditLog.create({
       organization: orgId,
       actor: req.user._id,
