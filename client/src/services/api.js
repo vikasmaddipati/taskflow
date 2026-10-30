@@ -6,14 +6,20 @@ const getBaseURL = () => {
   const customUrl = localStorage.getItem('tm_api_url');
   if (customUrl) return customUrl.trim();
 
+  // Running inside Capacitor native container: connect directly to live production backend
+  const isNative = typeof window !== 'undefined' && (
+    window.Capacitor?.isNativePlatform?.() ||
+    window.location.protocol === 'capacitor:' ||
+    (window.location.hostname === 'localhost' && !window.location.port)
+  );
+
+  if (isNative) {
+    return 'https://taskflow.zerosyntax.in/api';
+  }
+
   // Environment variable if provided
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL.trim();
-  }
-
-  // Running inside Capacitor native container without custom URL: default to production API or window origin
-  if (typeof window !== 'undefined' && (window.Capacitor || window.location.protocol === 'capacitor:')) {
-    return 'http://10.0.2.2:5000/api'; // Standard Android Emulator loopback host
   }
 
   return '/api';
