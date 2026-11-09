@@ -53,6 +53,9 @@ app.use(
           'https://accounts.google.com',
           'https://api.razorpay.com',
           'https://lumberjack.razorpay.com',
+          'capacitor://localhost',
+          'https://localhost',
+          'http://localhost',
           ...config.cors.allowedOrigins
         ],
         imgSrc: [
@@ -103,12 +106,21 @@ const corsOptions = {
   origin: (origin, callback) => {
     // Allow non-browser requests with no origin (e.g. mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
-    if (
-      allowedOrigins.includes(origin) ||
+
+    const isAllowedCustom = allowedOrigins.includes(origin) || origin === config.cors.clientUrl;
+    const isMobileApp =
       origin.startsWith('capacitor://') ||
       origin.startsWith('ionic://') ||
-      (!config.isProd && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')))
-    ) {
+      origin === 'https://localhost' ||
+      origin === 'http://localhost';
+    const isLocalDev =
+      origin.startsWith('http://localhost:') ||
+      origin.startsWith('https://localhost:') ||
+      origin.startsWith('http://127.0.0.1:') ||
+      origin.startsWith('https://127.0.0.1:') ||
+      /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin);
+
+    if (isAllowedCustom || isMobileApp || isLocalDev) {
       callback(null, true);
     } else {
       // Rejects unapproved origins gracefully according to CORS spec without crashing
@@ -129,9 +141,10 @@ const corsOptions = {
     'x-csrf-token',
     'x-xsrf-token',
     'X-XSRF-TOKEN',
-    'X-API-Version'
+    'X-API-Version',
+    'x-refresh-token'
   ],
-  exposedHeaders: ['X-XSRF-TOKEN', 'x-csrf-token', 'X-API-Version'],
+  exposedHeaders: ['X-XSRF-TOKEN', 'x-csrf-token', 'X-API-Version', 'x-refresh-token'],
   maxAge: 86400 // 24 hours preflight caching
 };
 

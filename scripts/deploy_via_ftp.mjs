@@ -36,6 +36,7 @@ PORT=5000
 NODE_ENV=production
 HOST=0.0.0.0
 CLIENT_URL=https://taskflow.zerosyntax.in
+CORS_ORIGINS=https://taskflow.zerosyntax.in,https://localhost,http://localhost,capacitor://localhost,ionic://localhost
 
 # ========================================================
 # DATABASE CONFIGURATION (MONGODB ATLAS)

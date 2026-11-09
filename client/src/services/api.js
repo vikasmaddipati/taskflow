@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { Capacitor } from '@capacitor/core';
 
 // Get base URL dynamically without hardcoded LAN IPs
 const getBaseURL = () => {
@@ -8,6 +9,7 @@ const getBaseURL = () => {
 
   // Running inside Capacitor native container: connect directly to live production backend
   const isNative = typeof window !== 'undefined' && (
+    Capacitor.isNativePlatform() ||
     window.Capacitor?.isNativePlatform?.() ||
     window.location.protocol === 'capacitor:' ||
     (window.location.hostname === 'localhost' && !window.location.port)
@@ -56,12 +58,10 @@ api.interceptors.request.use(
     config.baseURL = getBaseURL();
     config.withCredentials = true;
 
-    // For native Android apps (Capacitor), check if mobile token is stored
-    if (typeof window !== 'undefined' && window.Capacitor) {
-      const mobileToken = localStorage.getItem('tm_mobile_token');
-      if (mobileToken) {
-        config.headers.Authorization = `Bearer ${mobileToken}`;
-      }
+    // Attach Bearer token if present (for mobile apps / hybrid native clients / API clients)
+    const token = localStorage.getItem('tm_token') || localStorage.getItem('tm_mobile_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
 
     // Attach user local IANA timezone (e.g., 'America/Los_Angeles', 'Asia/Kolkata')
@@ -83,11 +83,16 @@ api.interceptors.request.use(
       config.headers['x-workspace-id'] = wsId;
     }
 
-    // Double Submit Cookie CSRF defense: extract XSRF-TOKEN cookie and pass in header
+    // Double Submit Cookie CSRF defense: extract XSRF-TOKEN cookie or fallback to stored token
     if (typeof document !== 'undefined' && ['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase())) {
       const match = document.cookie.match(/(^|; )XSRF-TOKEN=([^;]+)/);
       if (match && match[2]) {
         config.headers['X-XSRF-TOKEN'] = decodeURIComponent(match[2]);
+      } else {
+        const storedCsrf = localStorage.getItem('tm_csrf_token');
+        if (storedCsrf) {
+          config.headers['X-XSRF-TOKEN'] = storedCsrf;
+        }
       }
     }
 
@@ -96,7 +101,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor: handle 401 and silent refresh rotation via HttpOnly cookies
+// Response interceptor: handle 401 and silent refresh rotation via token or cookies
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -128,7 +133,12 @@ api.interceptors.response.use(
       return new Promise((resolve, reject) => {
         failedQueue.push({ resolve, reject });
       })
-        .then(() => api(originalRequest))
+        .then((newToken) => {
+          if (newToken) {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          }
+          return api(originalRequest);
+        })
         .catch((err) => Promise.reject(err));
     }
 
@@ -136,22 +146,39 @@ api.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      // Exchange refresh cookie for a fresh session
+      const storedRefreshToken = localStorage.getItem('tm_refresh_token');
+      // Exchange refresh cookie or token for a fresh session
       const res = await axios.post(
         `${getBaseURL()}/auth/refresh`,
-        {},
-        { withCredentials: true }
+        { refreshToken: storedRefreshToken || undefined },
+        {
+          headers: storedRefreshToken ? { 'x-refresh-token': storedRefreshToken } : {},
+          withCredentials: true
+        }
       );
 
       if (res.data?.success) {
-        processQueue(null);
+        const newToken = res.data.token;
+        if (newToken) {
+          localStorage.setItem('tm_token', newToken);
+          localStorage.setItem('tm_mobile_token', newToken);
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        }
+        if (res.data.refreshToken) {
+          localStorage.setItem('tm_refresh_token', res.data.refreshToken);
+        }
+        if (res.data.csrfToken) {
+          localStorage.setItem('tm_csrf_token', res.data.csrfToken);
+        }
+        processQueue(null, newToken);
         return api(originalRequest);
       }
     } catch (refreshErr) {
       processQueue(refreshErr, null);
-      // Clean up any legacy storage artifacts
       localStorage.removeItem('tm_token');
+      localStorage.removeItem('tm_mobile_token');
       localStorage.removeItem('tm_refresh_token');
+      localStorage.removeItem('tm_csrf_token');
       localStorage.removeItem('tm_user');
       window.dispatchEvent(new Event('auth:unauthorized'));
       return Promise.reject(refreshErr);

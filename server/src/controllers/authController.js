@@ -1315,8 +1315,8 @@ export const getActiveSessions = async (req, res, next) => {
 // @access  Public
 export const getSession = async (req, res) => {
   const token =
-    req.cookies?.tm_access_token ||
-    (req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization.split(' ')[1] : null);
+    (req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization.split(' ')[1] : null) ||
+    req.cookies?.tm_access_token;
 
   if (!token) {
     return res.status(200).json({

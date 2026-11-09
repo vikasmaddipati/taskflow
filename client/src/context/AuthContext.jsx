@@ -15,16 +15,37 @@ export const AuthProvider = ({ children }) => {
   const [verificationPending, setVerificationPending] = useState(false);
   const { setTheme } = useTheme();
 
-  // Clear obsolete/insecure localStorage authentication tokens (migration to HttpOnly cookies)
-  useEffect(() => {
+  // Token storage helpers (dual-mode: HttpOnly cookies for web browsers, Bearer tokens for mobile/hybrid apps)
+  const storeAuthTokens = (token, refreshToken, csrfToken) => {
     try {
-      localStorage.removeItem('tm_token');
-      localStorage.removeItem('tm_refresh_token');
-      localStorage.removeItem('tm_user');
+      if (token) {
+        localStorage.setItem('tm_token', token);
+        localStorage.setItem('tm_mobile_token', token);
+      }
+      if (refreshToken) {
+        localStorage.setItem('tm_refresh_token', refreshToken);
+      }
+      if (csrfToken) {
+        localStorage.setItem('tm_csrf_token', csrfToken);
+      }
     } catch {
       // ignore storage access errors
     }
-  }, []);
+  };
+
+  const clearAuthTokens = () => {
+    try {
+      localStorage.removeItem('tm_token');
+      localStorage.removeItem('tm_mobile_token');
+      localStorage.removeItem('tm_refresh_token');
+      localStorage.removeItem('tm_csrf_token');
+      localStorage.removeItem('tm_user');
+      localStorage.removeItem('tm_org_id');
+      localStorage.removeItem('tm_workspace_id');
+    } catch {
+      // ignore storage access errors
+    }
+  };
 
   // Secure logout helper: invalidates server-side session and clears client state
   const logout = useCallback(async () => {
@@ -33,11 +54,7 @@ export const AuthProvider = ({ children }) => {
     } catch {
       // ignore logout network errors
     } finally {
-      localStorage.removeItem('tm_token');
-      localStorage.removeItem('tm_refresh_token');
-      localStorage.removeItem('tm_user');
-      localStorage.removeItem('tm_org_id');
-      localStorage.removeItem('tm_workspace_id');
+      clearAuthTokens();
       setUser(null);
       setCurrentOrg(null);
       setOrganizations([]);
@@ -108,7 +125,7 @@ export const AuthProvider = ({ children }) => {
     }
   }, [fetchWorkspaces]);
 
-  // Load user profile on mount using HttpOnly cookie authentication
+  // Load user profile on mount using session or stored tokens
   useEffect(() => {
     let isMounted = true;
 
@@ -119,25 +136,45 @@ export const AuthProvider = ({ children }) => {
         if (isMounted && isAuthenticated && response.data?.user) {
           handleAuthenticatedUser(response.data.user);
           await fetchOrganizations();
-        } else if (isMounted) {
-          setUser(null);
+          return;
         }
-      } catch (err) {
-        // Not authenticated or network issue
-        if (isMounted) {
-          setUser(null);
+      } catch {
+        // Continue to refresh check if session check fails
+      }
+
+      // If session check didn't authenticate, check if we have a stored refresh token
+      const storedRefreshToken = localStorage.getItem('tm_refresh_token');
+      if (storedRefreshToken) {
+        try {
+          const res = await api.post('/auth/refresh', { refreshToken: storedRefreshToken });
+          if (res.data?.success && res.data?.token) {
+            storeAuthTokens(res.data.token, res.data.refreshToken, res.data.csrfToken);
+            const retryRes = await api.get('/auth/session');
+            if (isMounted && retryRes.data?.user) {
+              handleAuthenticatedUser(retryRes.data.user);
+              await fetchOrganizations();
+              return;
+            }
+          }
+        } catch {
+          clearAuthTokens();
         }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+      }
+
+      if (isMounted) {
+        setUser(null);
       }
     };
 
-    checkAuthStatus();
+    checkAuthStatus().finally(() => {
+      if (isMounted) {
+        setLoading(false);
+      }
+    });
 
     const handleUnauthorized = () => {
       if (isMounted) {
+        clearAuthTokens();
         setUser(null);
         setCurrentOrg(null);
         setCurrentWorkspace(null);
@@ -151,12 +188,19 @@ export const AuthProvider = ({ children }) => {
     };
   }, [handleAuthenticatedUser, fetchOrganizations]);
 
-  // Standard Email/Password Login
-  const login = async (email, password) => {
+  // Standard Email/Password Login (supports both (email, password) and ({ email, password }))
+  const login = async (emailOrObj, maybePassword) => {
     setAuthError(null);
     try {
+      let email = emailOrObj;
+      let password = maybePassword;
+      if (typeof emailOrObj === 'object' && emailOrObj !== null) {
+        email = emailOrObj.email;
+        password = emailOrObj.password;
+      }
       const response = await api.post('/auth/login', { email, password });
-      const { user: receivedUser, requiresVerification } = response.data;
+      const { user: receivedUser, requiresVerification, token, refreshToken, csrfToken } = response.data;
+      storeAuthTokens(token, refreshToken, csrfToken);
       handleAuthenticatedUser(receivedUser);
       if (requiresVerification) {
         setVerificationPending(true);
@@ -164,7 +208,11 @@ export const AuthProvider = ({ children }) => {
       await fetchOrganizations();
       return { success: true, requiresVerification };
     } catch (err) {
-      const message = err.response?.data?.message || 'Login failed. Please check your credentials.';
+      const message =
+        err.response?.data?.message ||
+        (err.code === 'ERR_NETWORK' || err.message === 'Network Error'
+          ? 'Unable to connect to server. Please check your connection or server status.'
+          : 'Login failed. Please check your credentials.');
       setAuthError(message);
       return { success: false, message };
     }
@@ -175,7 +223,8 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/register', { name, email, password });
-      const { user: receivedUser, requiresVerification } = response.data;
+      const { user: receivedUser, requiresVerification, token, refreshToken, csrfToken } = response.data;
+      storeAuthTokens(token, refreshToken, csrfToken);
       handleAuthenticatedUser(receivedUser);
       if (requiresVerification) {
         setVerificationPending(true);
@@ -183,7 +232,11 @@ export const AuthProvider = ({ children }) => {
       await fetchOrganizations();
       return { success: true, requiresVerification: true, message: response.data.message };
     } catch (err) {
-      const message = err.response?.data?.message || 'Registration failed. Please try again.';
+      const message =
+        err.response?.data?.message ||
+        (err.code === 'ERR_NETWORK' || err.message === 'Network Error'
+          ? 'Unable to connect to server. Please check your connection or server status.'
+          : 'Registration failed. Please try again.');
       setAuthError(message);
       return { success: false, message };
     }
@@ -194,12 +247,17 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/google', { credential });
-      const { user: receivedUser } = response.data;
+      const { user: receivedUser, token, refreshToken, csrfToken } = response.data;
+      storeAuthTokens(token, refreshToken, csrfToken);
       handleAuthenticatedUser(receivedUser);
       await fetchOrganizations();
       return { success: true };
     } catch (err) {
-      const message = err.response?.data?.message || 'Google sign-in failed. Please try again.';
+      const message =
+        err.response?.data?.message ||
+        (err.code === 'ERR_NETWORK' || err.message === 'Network Error'
+          ? 'Unable to connect to server. Please check your connection or server status.'
+          : 'Google sign-in failed. Please try again.');
       setAuthError(message);
       return { success: false, message };
     }
@@ -212,7 +270,11 @@ export const AuthProvider = ({ children }) => {
       const response = await api.post('/auth/otp/request', { email });
       return { success: true, message: response.data.message };
     } catch (err) {
-      const message = err.response?.data?.message || 'Failed to send OTP code';
+      const message =
+        err.response?.data?.message ||
+        (err.code === 'ERR_NETWORK' || err.message === 'Network Error'
+          ? 'Unable to connect to server. Please check your connection or server status.'
+          : 'Failed to send OTP code');
       setAuthError(message);
       return { success: false, message };
     }
@@ -223,12 +285,17 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/otp/verify', { email, otp, name });
-      const { user: receivedUser } = response.data;
+      const { user: receivedUser, token, refreshToken, csrfToken } = response.data;
+      storeAuthTokens(token, refreshToken, csrfToken);
       handleAuthenticatedUser(receivedUser);
       await fetchOrganizations();
       return { success: true };
     } catch (err) {
-      const message = err.response?.data?.message || 'Invalid or expired OTP code';
+      const message =
+        err.response?.data?.message ||
+        (err.code === 'ERR_NETWORK' || err.message === 'Network Error'
+          ? 'Unable to connect to server. Please check your connection or server status.'
+          : 'Invalid or expired OTP code');
       setAuthError(message);
       return { success: false, message };
     }
@@ -239,13 +306,18 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     try {
       const response = await api.post('/auth/verify-email', { email, otp });
-      const { user: receivedUser } = response.data;
+      const { user: receivedUser, token, refreshToken, csrfToken } = response.data;
+      storeAuthTokens(token, refreshToken, csrfToken);
       handleAuthenticatedUser(receivedUser);
       setVerificationPending(false);
       await fetchOrganizations();
       return { success: true, message: response.data.message };
     } catch (err) {
-      const message = err.response?.data?.message || 'Invalid verification code';
+      const message =
+        err.response?.data?.message ||
+        (err.code === 'ERR_NETWORK' || err.message === 'Network Error'
+          ? 'Unable to connect to server. Please check your connection or server status.'
+          : 'Invalid verification code');
       setAuthError(message);
       return { success: false, message };
     }

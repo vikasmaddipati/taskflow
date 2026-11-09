@@ -6,17 +6,18 @@ export const protect = async (req, res, next) => {
   let token = null;
   let isCookieAuth = false;
 
-  // 1. Check HttpOnly cookie first for web clients
-  if (req.cookies && req.cookies.tm_access_token) {
-    token = req.cookies.tm_access_token;
-    isCookieAuth = true;
-  }
-  // 2. Fall back to Authorization Bearer header (for mobile apps / Android client / API clients)
-  else if (
+  // 1. Check Authorization Bearer header first (for mobile apps / hybrid native clients / API clients)
+  if (
     req.headers.authorization &&
     req.headers.authorization.startsWith('Bearer')
   ) {
     token = req.headers.authorization.split(' ')[1];
+    isCookieAuth = false;
+  }
+  // 2. Fall back to HttpOnly cookie for web clients
+  else if (req.cookies && req.cookies.tm_access_token) {
+    token = req.cookies.tm_access_token;
+    isCookieAuth = true;
   }
   // 3. Fall back to query param for authenticated media/file downloads (e.g. browser anchor downloads)
   else if (req.query && req.query.token) {
