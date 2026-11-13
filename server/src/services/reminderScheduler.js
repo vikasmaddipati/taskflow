@@ -4,6 +4,7 @@ import Notification from '../models/Notification.js';
 import SchedulerLock from '../models/SchedulerLock.js';
 import { sendOtpEmail } from './emailService.js';
 import { makeTaskDueCall } from './telephonyService.js';
+import { notifyAdmin30MinWarning, notifyAdminTaskOverdue } from './whatsappService.js';
 
 const instanceId = `${os.hostname()}_${process.pid}_${Math.random().toString(36).substring(2, 8)}`;
 
@@ -90,7 +91,11 @@ export const scanAndDispatchReminders = async (options = {}) => {
     isDeleted: false,
     status: { $nin: ['completed'] },
     dueDate: { $ne: null, $lte: next24Hours },
-    remindedAt: null
+    $or: [
+      { remindedAt: null },
+      { whatsapp30MinNotifiedAt: null },
+      { whatsappDueNotifiedAt: null }
+    ]
   };
 
   if (options.organizationId) {
@@ -134,9 +139,21 @@ export const scanAndDispatchReminders = async (options = {}) => {
       // 2. Trigger Telephony Automated Phone Call alert if task due time is completed
       if (isOverdue) {
         await makeTaskDueCall({ user: recipientUser, task }).catch(() => {});
+        // Dispatch WhatsApp notification to Admin that task due time is completed and overdue
+        if (!task.whatsappDueNotifiedAt) {
+          await notifyAdminTaskOverdue(task, task.organization._id || task.organization).catch(() => {});
+          task.whatsappDueNotifiedAt = new Date();
+        }
       }
 
-      // 2. Dispatch Email Alert (Non-blocking)
+      // 3. Dispatch WhatsApp 30-minute warning to Admin if deadline is within next 45 minutes
+      const timeDiffMinutes = (new Date(task.dueDate).getTime() - now.getTime()) / (60 * 1000);
+      if (timeDiffMinutes > 0 && timeDiffMinutes <= 45 && !task.whatsapp30MinNotifiedAt) {
+        await notifyAdmin30MinWarning(task, task.organization._id || task.organization).catch(() => {});
+        task.whatsapp30MinNotifiedAt = new Date();
+      }
+
+      // 4. Dispatch Email Alert (Non-blocking)
       try {
         if (recipientUser.email) {
           await sendOtpEmail({

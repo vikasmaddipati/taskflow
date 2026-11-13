@@ -24,6 +24,7 @@ describe('Sidebar Component (Navigation & Badge Metrics)', () => {
     );
 
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Admin Panel')).toBeInTheDocument();
     expect(screen.getByText('AI Assistant')).toBeInTheDocument();
     expect(screen.getByText('All Tasks')).toBeInTheDocument();
     expect(screen.getByText('Kanban Board')).toBeInTheDocument();

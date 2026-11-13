@@ -8,6 +8,7 @@ import teamRoutes from '../teamRoutes.js';
 import categoryRoutes from '../categoryRoutes.js';
 import notificationRoutes from '../notificationRoutes.js';
 import aiRoutes from '../aiRoutes.js';
+import adminRoutes from '../adminRoutes.js';
 import { handleRazorpayWebhook } from '../../controllers/webhookController.js';
 import { getHealth, getLiveness, getReadiness } from '../../controllers/healthController.js';
 import { streamTenantEvents } from '../../controllers/realtimeController.js';
@@ -37,5 +38,6 @@ router.use('/billing', billingRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/ai', aiRoutes);
+router.use('/admin', adminRoutes);
 
 export default router;

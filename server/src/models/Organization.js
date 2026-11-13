@@ -43,6 +43,14 @@ const organizationSchema = new mongoose.Schema(
       currentPeriodStart: { type: Date, default: null },
       currentPeriodEnd: { type: Date, default: null },
       cancelAtPeriodEnd: { type: Boolean, default: false }
+    },
+    whatsappSettings: {
+      adminPhone: { type: String, default: null, trim: true },
+      enabled: { type: Boolean, default: false },
+      notifyOnTaskAssigned: { type: Boolean, default: true },
+      notifyOnTaskCompleted: { type: Boolean, default: true },
+      notifyBefore30Min: { type: Boolean, default: true },
+      notifyOnOverdue: { type: Boolean, default: true }
     }
   },
   {

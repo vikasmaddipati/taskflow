@@ -59,6 +59,14 @@ const taskSchema = new mongoose.Schema(
       type: Date,
       default: null
     },
+    whatsapp30MinNotifiedAt: {
+      type: Date,
+      default: null
+    },
+    whatsappDueNotifiedAt: {
+      type: Date,
+      default: null
+    },
     recurrence: {
       isRecurring: {
         type: Boolean,

@@ -15,6 +15,7 @@ import { TeamView } from './views/TeamView';
 import { BillingView } from './views/BillingView';
 import { SettingsView } from './views/SettingsView';
 import { TrashView } from './views/TrashView';
+import { AdminPanelView } from './views/AdminPanelView';
 import { AuthView } from './views/AuthView';
 import { TaskModal } from './components/common/TaskModal';
 import { DeleteConfirmModal } from './components/common/DeleteConfirmModal';
@@ -29,6 +30,7 @@ import api, { getBaseURL, syncOfflineMutations } from './services/api';
 
 const VIEW_PATH_MAP = {
   dashboard: '/dashboard',
+  admin: '/admin',
   ai: '/ai',
   all: '/tasks',
   board: '/board',
@@ -44,6 +46,7 @@ const VIEW_PATH_MAP = {
 const PATH_VIEW_MAP = {
   '/': 'dashboard',
   '/dashboard': 'dashboard',
+  '/admin': 'admin',
   '/ai': 'ai',
   '/tasks': 'all',
   '/all': 'all',
@@ -521,6 +524,14 @@ const AppContent = () => {
 
           {currentView === 'team' && (
             <TeamView showToast={showToast} />
+          )}
+
+          {currentView === 'admin' && (
+            <AdminPanelView
+              showToast={showToast}
+              onOpenCreateModal={handleOpenCreateModal}
+              onEditTask={handleOpenEditModal}
+            />
           )}
 
           {currentView === 'billing' && (

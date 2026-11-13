@@ -11,6 +11,7 @@ import {
   Settings,
   Trash2,
   Sparkles,
+  ShieldAlert,
   X
 } from 'lucide-react';
 
@@ -33,6 +34,12 @@ export const Sidebar = ({
       label: 'AI Assistant',
       icon: Sparkles,
       badge: 'AI'
+    },
+    {
+      id: 'admin',
+      label: 'Admin Panel',
+      icon: ShieldAlert,
+      badge: 'MONITOR'
     },
     {
       id: 'all',

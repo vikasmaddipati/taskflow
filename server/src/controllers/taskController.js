@@ -12,6 +12,7 @@ import { checkQuota, recordUsage } from '../services/entitlementService.js';
 import { deleteStoredFile, deleteMultipleStoredFiles } from '../services/storageService.js';
 import { dispatchWebhookEvent } from '../services/webhookDispatcher.js';
 import { broadcastTenantEvent } from '../services/realtimeService.js';
+import { notifyAdminTaskAssigned, notifyAdminTaskCompleted } from '../services/whatsappService.js';
 
 // @desc    Get paginated tasks for active organization with search, filter, and sorting
 // @route   GET /api/tasks
@@ -534,6 +535,13 @@ export const createTask = async (req, res, next) => {
     broadcastTenantEvent(orgId, 'task.created', { task: populatedTask });
     dispatchWebhookEvent(orgId, 'task.created', { task: populatedTask });
 
+    // WhatsApp Notification: Alert admin if task is assigned to a team member
+    if (populatedTask.assignedTo) {
+      notifyAdminTaskAssigned(populatedTask, orgId).catch((err) => {
+        console.warn('[WhatsApp Task Created Warning]:', err.message);
+      });
+    }
+
     res.status(201).json({
       success: true,
       message: 'Task created successfully',
@@ -723,6 +731,17 @@ export const updateTask = async (req, res, next) => {
       .populate('user', 'name email avatar')
       .populate('workspace', 'name isDefault');
 
+    // WhatsApp Notification: If status changed to completed or assignee changed
+    if (changes.status && updatedTask.status === 'completed') {
+      notifyAdminTaskCompleted(updatedTask, orgId, req.user.name).catch((err) => {
+        console.warn('[WhatsApp Task Status Warning]:', err.message);
+      });
+    } else if (changes.assignedTo && updatedTask.assignedTo) {
+      notifyAdminTaskAssigned(updatedTask, orgId).catch((err) => {
+        console.warn('[WhatsApp Task Assign Warning]:', err.message);
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: 'Task updated successfully',
@@ -824,6 +843,14 @@ export const toggleTaskStatus = async (req, res, next) => {
         targetId: nextOccurrence._id.toString(),
         details: { parentTaskId: task._id.toString(), nextDueDate: norm.dueDateString },
         ipAddress: req.ip
+      });
+    }
+
+    // WhatsApp Notification on task toggle completion
+    if (task.status === 'completed') {
+      const populatedForWhatsApp = await Task.findById(task._id).populate('assignedTo', 'name email');
+      notifyAdminTaskCompleted(populatedForWhatsApp || task, orgId, req.user.name).catch((err) => {
+        console.warn('[WhatsApp Task Toggle Warning]:', err.message);
       });
     }
 
@@ -1533,6 +1560,13 @@ export const updateTaskStatus = async (req, res, next) => {
 
     broadcastTenantEvent(orgId, 'task.status_changed', { taskId: task._id, oldStatus, newStatus: status });
     dispatchWebhookEvent(orgId, 'task.status_changed', { taskId: task._id, oldStatus, newStatus: status });
+
+    // WhatsApp Notification: Alert admin on status update / completion
+    if (status === 'completed' || oldStatus !== status) {
+      Task.findById(task._id).populate('assignedTo', 'name email').then((populated) => {
+        notifyAdminTaskCompleted(populated || task, orgId, req.user.name).catch(() => {});
+      }).catch(() => {});
+    }
 
     res.status(200).json({
       success: true,
