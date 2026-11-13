@@ -81,6 +81,7 @@ const VIEW_ALIASES = [
   { view: 'upcoming', label: 'Upcoming Tasks', patterns: ['upcoming tasks', 'upcoming', 'upcoming schedule'] },
   { view: 'completed', label: 'Completed Tasks', patterns: ['completed tasks', 'completed', 'done tasks'] },
   { view: 'team', label: 'Team and Members', patterns: ['team and members', 'team members', 'members', 'team', 'teams'] },
+  { view: 'admin', label: 'Admin Panel', patterns: ['admin panel', 'admin', 'administrator', 'task monitor', 'monitor', 'admin view', 'control panel'] },
   { view: 'billing', label: 'Billing and Plans', patterns: ['billing and plans', 'billing', 'plans', 'subscription'] },
   { view: 'settings', label: 'Settings', patterns: ['account settings', 'settings', 'setting', 'profile', 'preferences'] },
   { view: 'trash', label: 'Trash and Recovery', patterns: ['trash and recovery', 'trash', 'recovery', 'recycle bin'] }
