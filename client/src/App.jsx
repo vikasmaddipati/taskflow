@@ -22,7 +22,7 @@ import { CreateOrgModal } from './components/common/CreateOrgModal';
 import { AiCopilotDrawer } from './components/ai/AiCopilotDrawer';
 import { VoiceAssistantHUD } from './components/voice/VoiceAssistantHUD';
 import { Toast } from './components/common/Toast';
-import { TaskDueAlarmModal } from './components/common/TaskDueAlarmModal';
+import { TaskIncomingCallModal } from './components/common/TaskIncomingCallModal';
 import { useVoiceAssistant } from './hooks/useVoiceAssistant';
 import { useTaskAlarmMonitor } from './hooks/useTaskAlarmMonitor';
 import api, { getBaseURL, syncOfflineMutations } from './services/api';
@@ -194,6 +194,9 @@ const AppContent = () => {
         try {
           const data = JSON.parse(event.data);
           if (data && data.type && data.type !== 'connected') {
+            if (data.type === 'task.phone_call_triggered' && data.task) {
+              window.dispatchEvent(new CustomEvent('taskflow:phone_call', { detail: data }));
+            }
             setRefreshTrigger((prev) => prev + 1);
           }
         } catch {
@@ -356,17 +359,16 @@ const AppContent = () => {
   }, [handleToggleStatus]);
 
   const {
-    activeAlarmTask,
-    isAlarmOpen,
-    isMuted,
-    dismissAlarm,
-    snoozeAlarm,
-    completeAlarmTask,
-    toggleMute
+    activeCallTask,
+    isCallOpen,
+    declineCall,
+    snoozeCall,
+    completeCallTask
   } = useTaskAlarmMonitor({
     tasks: activeTasks,
     onCompleteTask: handleAlarmCompleteTask,
-    showToast
+    showToast,
+    isAuthenticated
   });
 
   // Confirm delete task
@@ -608,15 +610,13 @@ const AppContent = () => {
         onRunExampleCommand={voice.runTextCommand}
       />
 
-      {/* Real-Time Due Alarm & Voice Callout Modal */}
-      <TaskDueAlarmModal
-        task={activeAlarmTask}
-        isOpen={isAlarmOpen}
-        onDismiss={dismissAlarm}
-        onComplete={completeAlarmTask}
-        onSnooze={snoozeAlarm}
-        onMuteToggle={toggleMute}
-        isMuted={isMuted}
+      {/* Real-Time Automated Incoming Phone Call Modal */}
+      <TaskIncomingCallModal
+        task={activeCallTask}
+        isOpen={isCallOpen}
+        onDecline={declineCall}
+        onComplete={completeCallTask}
+        onSnooze={snoozeCall}
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />

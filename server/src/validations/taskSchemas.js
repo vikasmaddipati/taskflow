@@ -7,6 +7,27 @@ export const objectIdSchema = z
   .trim()
   .regex(OBJECT_ID_REGEX, { message: 'Must be a valid 24-character hexadecimal MongoDB ObjectId' });
 
+export const dueTimeSchema = z
+  .any()
+  .optional()
+  .nullable()
+  .transform((val) => {
+    if (!val || typeof val !== 'string') return null;
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+    const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (match) {
+      const h = match[1].padStart(2, '0');
+      const m = match[2];
+      const numH = parseInt(h, 10);
+      const numM = parseInt(m, 10);
+      if (numH >= 0 && numH <= 23 && numM >= 0 && numM <= 59) {
+        return `${h}:${m}`;
+      }
+    }
+    return null;
+  });
+
 export const taskIdParamSchema = z.object({
   id: objectIdSchema
 });
@@ -22,7 +43,7 @@ export const createTaskSchema = z.object({
   status: z.enum(['pending', 'in_progress', 'review', 'completed']).optional().default('pending'),
   dueDate: z.any().optional().nullable(),
   dueDateString: z.string().trim().optional().nullable(),
-  dueTime: z.string().trim().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'Due time must be in HH:mm format' }).optional().nullable(),
+  dueTime: dueTimeSchema,
   category: z.string().trim().max(50).optional().default('General'),
   assignedTo: objectIdSchema.optional().nullable(),
   collaboratorIds: z.array(objectIdSchema).optional().default([]),
@@ -54,7 +75,7 @@ export const updateTaskSchema = z.object({
   status: z.enum(['pending', 'in_progress', 'review', 'completed']).optional(),
   dueDate: z.any().optional().nullable(),
   dueDateString: z.string().trim().optional().nullable(),
-  dueTime: z.string().trim().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'Due time must be in HH:mm format' }).optional().nullable(),
+  dueTime: dueTimeSchema,
   category: z.string().trim().max(50).optional(),
   assignedTo: objectIdSchema.optional().nullable(),
   collaboratorIds: z.array(objectIdSchema).optional(),

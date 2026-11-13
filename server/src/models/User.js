@@ -56,6 +56,15 @@ const userSchema = new mongoose.Schema(
       enum: ['light', 'dark'],
       default: 'light'
     },
+    phone: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    phoneAlertsEnabled: {
+      type: Boolean,
+      default: true
+    },
     currentOrganization: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',

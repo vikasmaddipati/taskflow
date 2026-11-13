@@ -1,11 +1,44 @@
-// Web Audio API Synthesizer for Task Due Alarms
-// Completely self-contained with no external audio file dependencies
+// Audio & Telephony Ringtone Synthesizer for Task Due Alarms and Incoming Calls
+// Pure self-contained Web Audio API + HTML5 Audio fallback with zero external assets
 
 class AlarmAudioService {
   constructor() {
     this.audioCtx = null;
-    this.intervalId = null;
+    this.ringInterval = null;
     this.isPlaying = false;
+    this.isUnlocked = false;
+    this.fallbackAudio = null;
+
+    if (typeof window !== 'undefined') {
+      this.attachAutoUnlock();
+    }
+  }
+
+  attachAutoUnlock() {
+    const unlock = () => {
+      this.unlock();
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('click', unlock);
+      window.removeEventListener('keydown', unlock);
+      window.removeEventListener('touchstart', unlock);
+    };
+
+    window.addEventListener('pointerdown', unlock, { passive: true });
+    window.addEventListener('click', unlock, { passive: true });
+    window.addEventListener('keydown', unlock, { passive: true });
+    window.addEventListener('touchstart', unlock, { passive: true });
+  }
+
+  unlock() {
+    try {
+      const ctx = this.getAudioContext();
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      this.isUnlocked = true;
+    } catch {
+      // ignore
+    }
   }
 
   getAudioContext() {
@@ -23,9 +56,9 @@ class AlarmAudioService {
   }
 
   /**
-   * Plays a single melodic two-tone alarm pulse (e.g., 880Hz -> 1046Hz)
+   * Generates a single burst of telephone ringback tones (440Hz + 480Hz dual frequency)
    */
-  playAlarmPulse() {
+  playTelephoneRingBurst() {
     try {
       const ctx = this.getAudioContext();
       if (!ctx) return;
@@ -36,19 +69,17 @@ class AlarmAudioService {
       const gain = ctx.createGain();
 
       osc1.type = 'sine';
-      osc2.type = 'triangle';
+      osc2.type = 'sine';
 
-      // First beep: 880Hz (A5)
-      osc1.frequency.setValueAtTime(880, now);
-      osc2.frequency.setValueAtTime(880 * 1.5, now);
+      // Standard telephone frequencies: 440Hz + 480Hz
+      osc1.frequency.setValueAtTime(440, now);
+      osc2.frequency.setValueAtTime(480, now);
 
-      // Pitch sweep to 1046Hz (C6)
-      osc1.frequency.exponentialRampToValueAtTime(1046, now + 0.15);
-      osc2.frequency.exponentialRampToValueAtTime(1046 * 1.5, now + 0.15);
-
+      // Ring envelope (1.8 seconds on, slight fade-in and fade-out)
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.linearRampToValueAtTime(0.35, now + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      gain.gain.linearRampToValueAtTime(0.4, now + 0.05);
+      gain.gain.setValueAtTime(0.4, now + 1.6);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
 
       osc1.connect(gain);
       osc2.connect(gain);
@@ -56,53 +87,77 @@ class AlarmAudioService {
 
       osc1.start(now);
       osc2.start(now);
-      osc1.stop(now + 0.3);
-      osc2.stop(now + 0.3);
-
-      // Second burst 180ms later for standard alarm "beep-beep"
-      const now2 = now + 0.18;
-      const osc3 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc3.type = 'sine';
-      osc3.frequency.setValueAtTime(1046, now2);
-      osc3.frequency.exponentialRampToValueAtTime(1318, now2 + 0.15);
-
-      gain2.gain.setValueAtTime(0.001, now2);
-      gain2.gain.linearRampToValueAtTime(0.4, now2 + 0.04);
-      gain2.gain.exponentialRampToValueAtTime(0.001, now2 + 0.28);
-
-      osc3.connect(gain2);
-      gain2.connect(ctx.destination);
-
-      osc3.start(now2);
-      osc3.stop(now2 + 0.3);
+      osc1.stop(now + 1.85);
+      osc2.stop(now + 1.85);
     } catch {
       // ignore audio context policy errors
     }
   }
 
   /**
-   * Starts a repeating alarm ringtone pattern until stopAlarm is called
+   * Starts a continuous telephone ringtone loop (2 seconds ring, 2 seconds pause)
    */
   startAlarm() {
     if (this.isPlaying) return;
     this.isPlaying = true;
-    this.playAlarmPulse();
-    this.intervalId = setInterval(() => {
+    this.unlock();
+
+    // 1. Play first ring immediately
+    this.playTelephoneRingBurst();
+
+    // 2. Schedule repeating cadence (every 3.6 seconds)
+    this.ringInterval = setInterval(() => {
       if (this.isPlaying) {
-        this.playAlarmPulse();
+        this.playTelephoneRingBurst();
       }
-    }, 1200);
+    }, 3600);
   }
 
   /**
-   * Silences the active alarm immediately
+   * Silences all active ringtones and sounds immediately
    */
   stopAlarm() {
     this.isPlaying = false;
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+    if (this.ringInterval) {
+      clearInterval(this.ringInterval);
+      this.ringInterval = null;
+    }
+    if (this.fallbackAudio) {
+      try {
+        this.fallbackAudio.pause();
+        this.fallbackAudio.currentTime = 0;
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  /**
+   * Short connection chirp played when user answers the phone call
+   */
+  playCallConnectedTone() {
+    try {
+      const ctx = this.getAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, now); // D5
+      osc.frequency.setValueAtTime(880, now + 0.1); // A5
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.3, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.26);
+    } catch {
+      // ignore
     }
   }
 
@@ -125,7 +180,7 @@ class AlarmAudioService {
         osc.frequency.setValueAtTime(freq, noteTime);
 
         gain.gain.setValueAtTime(0.001, noteTime);
-        gain.gain.linearRampToValueAtTime(0.2, noteTime + 0.02);
+        gain.gain.linearRampToValueAtTime(0.25, noteTime + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 0.35);
 
         osc.connect(gain);

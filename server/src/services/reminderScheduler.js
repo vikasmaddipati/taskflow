@@ -3,6 +3,7 @@ import Task from '../models/Task.js';
 import Notification from '../models/Notification.js';
 import SchedulerLock from '../models/SchedulerLock.js';
 import { sendOtpEmail } from './emailService.js';
+import { makeTaskDueCall } from './telephonyService.js';
 
 const instanceId = `${os.hostname()}_${process.pid}_${Math.random().toString(36).substring(2, 8)}`;
 
@@ -129,6 +130,11 @@ export const scanAndDispatchReminders = async (options = {}) => {
         type: alertType
       });
       notificationsCreated++;
+
+      // 2. Trigger Telephony Automated Phone Call alert if task due time is completed
+      if (isOverdue) {
+        await makeTaskDueCall({ user: recipientUser, task }).catch(() => {});
+      }
 
       // 2. Dispatch Email Alert (Non-blocking)
       try {

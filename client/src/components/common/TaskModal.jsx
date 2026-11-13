@@ -123,7 +123,22 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
         }
       }
       setDueDate(dateVal);
-      setDueTime(task.dueTime || '');
+      let timeVal = task.dueTime || '';
+      if (!timeVal && task.dueDate) {
+        try {
+          const d = new Date(task.dueDate);
+          if (!isNaN(d.getTime())) {
+            const h = String(d.getHours()).padStart(2, '0');
+            const m = String(d.getMinutes()).padStart(2, '0');
+            if (h !== '00' || m !== '00') {
+              timeVal = `${h}:${m}`;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+      setDueTime(timeVal);
       setCategory(task.category || 'General');
     } else {
       setTitle('');

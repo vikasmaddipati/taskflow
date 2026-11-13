@@ -18,7 +18,8 @@ import {
   getMe,
   updateProfile,
   changeEmail,
-  deleteAccount
+  deleteAccount,
+  testPhoneCall
 } from '../controllers/authController.js';
 import { protect } from '../middleware/auth.js';
 import {
@@ -67,6 +68,7 @@ router.get('/sessions', protect, getActiveSessions);
 // Profile & Account Management
 router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfile);
+router.post('/test-phone-call', protect, testPhoneCall);
 router.patch('/email', protect, changeEmail);
 router.delete('/account', protect, deleteAccount);
 

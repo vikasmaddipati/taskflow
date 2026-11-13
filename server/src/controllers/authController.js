@@ -12,6 +12,8 @@ import { verifyGoogleIdToken } from '../services/googleAuthService.js';
 import { config, getValidatedJwtSecret } from '../config/env.js';
 import { isValidEmail, normalizeEmail } from '../utils/validators.js';
 import { runInTransaction } from '../utils/dbSession.js';
+import { makeTaskDueCall } from '../services/telephonyService.js';
+import mongoose from 'mongoose';
 
 // Helper to hash secrets with sha256
 const hashSecret = (value) => {
@@ -1405,6 +1407,14 @@ export const updateProfile = async (req, res, next) => {
       user.theme = theme;
     }
 
+    if (req.body.phone !== undefined) {
+      user.phone = req.body.phone ? req.body.phone.trim() : null;
+    }
+
+    if (req.body.phoneAlertsEnabled !== undefined) {
+      user.phoneAlertsEnabled = Boolean(req.body.phoneAlertsEnabled);
+    }
+
     let passwordChanged = false;
     if (newPassword) {
       if (user.password) {
@@ -1647,6 +1657,37 @@ export const deleteAccount = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: 'Your account and personal data have been permanently deleted.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Test automated phone call notification
+// @route   POST /api/auth/test-phone-call
+// @access  Private
+export const testPhoneCall = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const todayStr = new Intl.DateTimeFormat('en-CA').format(new Date());
+    const nowTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+    const mockTask = {
+      _id: new mongoose.Types.ObjectId(),
+      title: req.body?.taskTitle || 'Complete Priority Milestone',
+      description: 'Automated test call for TaskFlow deadline alert system.',
+      priority: 'high',
+      category: 'Work',
+      organization: req.organization?._id || user.currentOrganization,
+      dueDateString: todayStr,
+      dueTime: nowTime
+    };
+
+    const callResult = await makeTaskDueCall({ user, task: mockTask });
+    res.status(200).json({
+      success: true,
+      message: 'Automated phone call alert triggered successfully',
+      callResult
     });
   } catch (error) {
     next(error);

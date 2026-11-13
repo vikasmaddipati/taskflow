@@ -17,7 +17,10 @@ import {
   FileText,
   Webhook,
   Send,
-  ExternalLink
+  ExternalLink,
+  PhoneCall,
+  Phone,
+  PhoneOutgoing
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getBaseURL } from '../services/api';
@@ -28,7 +31,10 @@ export const SettingsView = ({ showToast }) => {
 
   // Profile fields
   const [name, setName] = useState(user?.name || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [phoneAlertsEnabled, setPhoneAlertsEnabled] = useState(user?.phoneAlertsEnabled !== false);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [isTestingCall, setIsTestingCall] = useState(false);
   const [profileMessage, setProfileMessage] = useState(null);
 
   // Email change state
@@ -204,14 +210,36 @@ export const SettingsView = ({ showToast }) => {
     setIsUpdatingProfile(true);
     setProfileMessage(null);
 
-    const res = await updateProfile({ name: name.trim(), theme: 'light' });
+    const res = await updateProfile({
+      name: name.trim(),
+      phone: phone.trim() || null,
+      phoneAlertsEnabled,
+      theme: 'light'
+    });
     setIsUpdatingProfile(false);
 
     if (res.success) {
       setProfileMessage({ type: 'success', text: 'Profile updated successfully!' });
-      showToast?.({ type: 'success', message: 'Profile settings saved' });
+      showToast?.({ type: 'success', message: 'Profile and phone alert settings saved' });
     } else {
       setProfileMessage({ type: 'error', text: res.message || 'Failed to update profile' });
+    }
+  };
+
+  // Trigger simulated/live phone call test
+  const handleTestPhoneCall = async () => {
+    try {
+      setIsTestingCall(true);
+      const res = await api.post('/auth/test-phone-call', {
+        taskTitle: 'Urgent TaskFlow Deadline Verification'
+      });
+      if (res.data?.success) {
+        showToast?.({ type: 'success', message: 'Incoming automated phone call alert triggered!' });
+      }
+    } catch (err) {
+      showToast?.({ type: 'error', message: err.response?.data?.message || 'Failed to place test phone call' });
+    } finally {
+      setIsTestingCall(false);
     }
   };
 
@@ -488,6 +516,64 @@ export const SettingsView = ({ showToast }) => {
               disabled={isUpdatingProfile}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5 flex items-center justify-between">
+              <span>Mobile Phone Number</span>
+              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold lowercase">for deadline voice calls</span>
+            </label>
+            <div className="relative">
+              <input
+                type="tel"
+                placeholder="+1 (555) 000-0000"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                disabled={isUpdatingProfile}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+              TaskFlow places an automated voice phone call to this number whenever a task due date & time is completed.
+            </p>
+          </div>
+
+          {/* Automated Phone Call Alert Toggle & Test Call */}
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  Automated Phone Call on Task Due
+                </span>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Ring interactive telephone alert & speak task details when due time finishes.
+                </p>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={phoneAlertsEnabled}
+                  onChange={(e) => setPhoneAlertsEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600" />
+              </label>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500">Test your audio ringtone & voice caller:</span>
+              <button
+                type="button"
+                onClick={handleTestPhoneCall}
+                disabled={isTestingCall}
+                className="px-3 py-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-lg border border-indigo-200 dark:border-indigo-800 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <PhoneCall className={`w-3.5 h-3.5 ${isTestingCall ? 'animate-bounce' : ''}`} />
+                {isTestingCall ? 'Calling...' : 'Test Incoming Phone Call'}
+              </button>
+            </div>
           </div>
 
           <div className="flex justify-end pt-2">

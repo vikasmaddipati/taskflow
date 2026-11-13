@@ -1,15 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import alarmAudioService from '../services/alarmAudioService';
 import voiceService from '../services/voiceService';
+import api from '../services/api';
 
 /**
- * Custom hook to monitor task due dates/times in real time and trigger audible alarms,
- * voice speech callouts, visual alarm modal, and browser notifications when a task's due time is reached.
+ * Custom hook to monitor task due dates & times in real time.
+ * Triggers an interactive incoming phone call screen, authentic telephone ringtones,
+ * spoken voice bot callouts, and browser notifications when a task's due time is reached.
  */
-export const useTaskAlarmMonitor = ({ tasks = [], onCompleteTask = null, showToast = null }) => {
-  const [activeAlarmTask, setActiveAlarmTask] = useState(null);
-  const [isAlarmOpen, setIsAlarmOpen] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
+export const useTaskAlarmMonitor = ({
+  tasks = [],
+  onCompleteTask = null,
+  showToast = null,
+  isAuthenticated = false
+}) => {
+  const [activeCallTask, setActiveCallTask] = useState(null);
+  const [isCallOpen, setIsCallOpen] = useState(false);
 
   // Map of taskId -> { alertedAt: number, snoozeUntil?: number }
   const alertedTasksRef = useRef(new Map());
@@ -28,22 +34,22 @@ export const useTaskAlarmMonitor = ({ tasks = [], onCompleteTask = null, showToa
     }
   }, []);
 
-  // Dismiss / Silence active alarm
-  const dismissAlarm = useCallback(() => {
+  // End / Decline Call
+  const declineCall = useCallback(() => {
     alarmAudioService.stopAlarm();
     voiceService.stopSpeaking();
-    setIsAlarmOpen(false);
-    setActiveAlarmTask(null);
+    setIsCallOpen(false);
+    setActiveCallTask(null);
   }, []);
 
-  // Snooze active alarm for X minutes (default: 5 minutes)
-  const snoozeAlarm = useCallback(
+  // Snooze Call alert for X minutes (default: 5 minutes)
+  const snoozeCall = useCallback(
     (task, minutes = 5) => {
       if (!task?._id) return;
       alarmAudioService.stopAlarm();
       voiceService.stopSpeaking();
-      setIsAlarmOpen(false);
-      setActiveAlarmTask(null);
+      setIsCallOpen(false);
+      setActiveCallTask(null);
 
       const snoozeTime = Date.now() + minutes * 60 * 1000;
       alertedTasksRef.current.set(task._id, {
@@ -53,22 +59,21 @@ export const useTaskAlarmMonitor = ({ tasks = [], onCompleteTask = null, showToa
 
       showToast?.({
         type: 'info',
-        message: `Alarm for "${task.title}" snoozed for ${minutes} minutes.`
+        message: `Phone call alert for "${task.title}" snoozed for ${minutes} minutes.`
       });
     },
     [showToast]
   );
 
-  // Mark task as completed directly from the alarm modal
-  const completeAlarmTask = useCallback(
+  // Complete task from call
+  const completeCallTask = useCallback(
     async (task) => {
       if (!task?._id) return;
       alarmAudioService.stopAlarm();
       voiceService.stopSpeaking();
-      setIsAlarmOpen(false);
-      setActiveAlarmTask(null);
+      setIsCallOpen(false);
+      setActiveCallTask(null);
 
-      // Play positive completion chime
       alarmAudioService.playCompletionChime();
 
       alertedTasksRef.current.set(task._id, {
@@ -82,29 +87,46 @@ export const useTaskAlarmMonitor = ({ tasks = [], onCompleteTask = null, showToa
 
       showToast?.({
         type: 'success',
-        message: `Task "${task.title}" completed!`
+        message: `Task "${task.title}" marked as completed!`
       });
     },
     [onCompleteTask, showToast]
   );
 
-  // Toggle mute state
-  const toggleMute = useCallback(() => {
-    setIsMuted((prev) => {
-      const next = !prev;
-      if (next) {
-        alarmAudioService.stopAlarm();
-      } else {
-        alarmAudioService.startAlarm();
-      }
-      return next;
-    });
-  }, []);
+  // Trigger incoming phone call for a task
+  const triggerIncomingCall = useCallback(
+    (task) => {
+      if (!task?._id) return;
+      setActiveCallTask(task);
+      setIsCallOpen(true);
 
-  // Main evaluation engine
+      // Start authentic telephone ringtone
+      alarmAudioService.startAlarm();
+
+      // Fire desktop notification
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification(`Incoming Phone Call: ${task.title}`, {
+            body: `Deadline reached for "${task.title}". Tap to view task.`,
+            icon: '/vite.svg',
+            tag: `task-call-${task._id}`
+          });
+        } catch {
+          // ignore notification error
+        }
+      }
+
+      showToast?.({
+        type: 'warning',
+        message: `Incoming Deadline Call: "${task.title}"`
+      });
+    },
+    [showToast]
+  );
+
+  // Main task evaluation engine
   const checkDueTasks = useCallback(() => {
-    // If an alarm is already ringing in the modal, do not overwrite until handled
-    if (isAlarmOpen) return;
+    if (isCallOpen) return;
 
     const now = Date.now();
     const currentTasks = tasksRef.current || [];
@@ -112,15 +134,15 @@ export const useTaskAlarmMonitor = ({ tasks = [], onCompleteTask = null, showToa
     for (const task of currentTasks) {
       if (!task || task.status === 'completed' || task.isDeleted) continue;
 
-      // Determine due timestamp
       let dueTimestamp = null;
 
+      // 1. Precise local time evaluation
       if (task.dueDateString && task.dueTime) {
-        // Precise date and time string e.g. "2026-11-13" and "14:30"
-        const isoLocal = `${task.dueDateString}T${task.dueTime}:00`;
-        const parsed = new Date(isoLocal);
-        if (!isNaN(parsed.getTime())) {
-          dueTimestamp = parsed.getTime();
+        const [y, m, d] = task.dueDateString.split('-').map(Number);
+        const [h, min] = task.dueTime.split(':').map(Number);
+        if (!isNaN(y) && !isNaN(m) && !isNaN(d) && !isNaN(h) && !isNaN(min)) {
+          const localDate = new Date(y, m - 1, d, h, min, 0, 0);
+          dueTimestamp = localDate.getTime();
         }
       } else if (task.dueDate) {
         const parsed = new Date(task.dueDate);
@@ -131,81 +153,74 @@ export const useTaskAlarmMonitor = ({ tasks = [], onCompleteTask = null, showToa
 
       if (!dueTimestamp) continue;
 
-      // We trigger the alarm when the due time is reached or passed (within the last 2 hours to avoid alerting ancient tasks on initial login)
+      // Check if due time has passed within the last 24 hours
       const diff = now - dueTimestamp;
-      const isDueTimeReached = diff >= 0 && diff <= 2 * 60 * 60 * 1000;
+      const isDueTimeCompleted = diff >= 0 && diff <= 24 * 60 * 60 * 1000;
 
-      if (isDueTimeReached) {
+      if (isDueTimeCompleted) {
         const alertRecord = alertedTasksRef.current.get(task._id);
 
         if (alertRecord) {
-          // If snoozed and snooze time has now passed
           if (alertRecord.snoozeUntil && now >= alertRecord.snoozeUntil) {
-            // Re-trigger alarm!
+            // Snooze interval finished -> re-trigger call
           } else {
-            // Already alerted and not snoozed
+            // Already alerted
             continue;
           }
         }
 
-        // Record that this task has triggered an alarm
+        // Record alerted task
         alertedTasksRef.current.set(task._id, {
           alertedAt: now
         });
 
-        // 1. Open visual modal
-        setActiveAlarmTask(task);
-        setIsAlarmOpen(true);
-        setIsMuted(false);
-
-        // 2. Play audible alarm synthesizer
-        alarmAudioService.startAlarm();
-
-        // 3. Announce aloud via speech synthesis
-        const voiceText = `Attention! The due time for task "${task.title}" is completed. Please review or complete this task.`;
-        voiceService.speak(voiceText).catch(() => {});
-
-        // 4. Fire Desktop System Notification if supported
-        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-          try {
-            new Notification(`Task Due Time Completed: ${task.title}`, {
-              body: `The scheduled due time for "${task.title}" has arrived.`,
-              icon: '/vite.svg',
-              tag: `task-alarm-${task._id}`
-            });
-          } catch {
-            // ignore
-          }
-        }
-
-        // 5. In-app toast
-        showToast?.({
-          type: 'warning',
-          message: `Due time reached for "${task.title}"!`
-        });
-
-        // Trigger one alarm at a time
-        break;
+        triggerIncomingCall(task);
+        break; // Trigger one call at a time
       }
     }
-  }, [isAlarmOpen, showToast]);
+  }, [isCallOpen, triggerIncomingCall]);
 
-  // Periodic interval runner (runs every 4 seconds)
+  // Periodic interval runner (checks every 3 seconds)
   useEffect(() => {
-    const interval = setInterval(checkDueTasks, 4000);
-    // Initial immediate check
+    const interval = setInterval(checkDueTasks, 3000);
     checkDueTasks();
     return () => clearInterval(interval);
   }, [checkDueTasks]);
 
+  // Periodic background task sync (refreshes tasks every 15 seconds)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const fetchInterval = setInterval(() => {
+      api.get('/tasks?limit=100')
+        .then((res) => {
+          if (res.data?.success && Array.isArray(res.data.tasks || res.data.items)) {
+            tasksRef.current = res.data.tasks || res.data.items;
+          }
+        })
+        .catch(() => {});
+    }, 15000);
+
+    return () => clearInterval(fetchInterval);
+  }, [isAuthenticated]);
+
+  // Listen for real-time SSE phone call events
+  useEffect(() => {
+    const handleSseCall = (e) => {
+      if (e.detail?.task) {
+        triggerIncomingCall(e.detail.task);
+      }
+    };
+    window.addEventListener('taskflow:phone_call', handleSseCall);
+    return () => window.removeEventListener('taskflow:phone_call', handleSseCall);
+  }, [triggerIncomingCall]);
+
   return {
-    activeAlarmTask,
-    isAlarmOpen,
-    isMuted,
-    dismissAlarm,
-    snoozeAlarm,
-    completeAlarmTask,
-    toggleMute
+    activeCallTask,
+    isCallOpen,
+    declineCall,
+    snoozeCall,
+    completeCallTask,
+    triggerIncomingCall
   };
 };
 
