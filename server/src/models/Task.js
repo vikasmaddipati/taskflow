@@ -50,6 +50,11 @@ const taskSchema = new mongoose.Schema(
       default: null,
       index: true
     },
+    dueTime: {
+      type: String,
+      default: null,
+      trim: true
+    },
     remindedAt: {
       type: Date,
       default: null

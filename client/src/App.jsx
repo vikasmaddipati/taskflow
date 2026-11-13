@@ -22,7 +22,9 @@ import { CreateOrgModal } from './components/common/CreateOrgModal';
 import { AiCopilotDrawer } from './components/ai/AiCopilotDrawer';
 import { VoiceAssistantHUD } from './components/voice/VoiceAssistantHUD';
 import { Toast } from './components/common/Toast';
+import { TaskDueAlarmModal } from './components/common/TaskDueAlarmModal';
 import { useVoiceAssistant } from './hooks/useVoiceAssistant';
+import { useTaskAlarmMonitor } from './hooks/useTaskAlarmMonitor';
 import api, { getBaseURL, syncOfflineMutations } from './services/api';
 
 const VIEW_PATH_MAP = {
@@ -326,6 +328,47 @@ const AppContent = () => {
     setIsDeleteModalOpen(true);
   };
 
+  // Fetch active pending tasks for real-time due time alarm monitoring
+  const [activeTasks, setActiveTasks] = useState([]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let isCancelled = false;
+    api.get('/tasks?status=pending&limit=100')
+      .then((res) => {
+        if (!isCancelled && res.data?.success && Array.isArray(res.data.tasks)) {
+          setActiveTasks(res.data.tasks);
+        }
+      })
+      .catch(() => {});
+    return () => { isCancelled = true; };
+  }, [isAuthenticated, refreshTrigger, currentOrg?._id, currentWorkspace?._id]);
+
+  // Handle task complete from alarm modal
+  const handleAlarmCompleteTask = useCallback(async (task) => {
+    if (!task?._id) return;
+    try {
+      await api.patch(`/tasks/${task._id}/status`, { status: 'completed' });
+      setRefreshTrigger((prev) => prev + 1);
+    } catch {
+      await handleToggleStatus(task._id);
+    }
+  }, [handleToggleStatus]);
+
+  const {
+    activeAlarmTask,
+    isAlarmOpen,
+    isMuted,
+    dismissAlarm,
+    snoozeAlarm,
+    completeAlarmTask,
+    toggleMute
+  } = useTaskAlarmMonitor({
+    tasks: activeTasks,
+    onCompleteTask: handleAlarmCompleteTask,
+    showToast
+  });
+
   // Confirm delete task
   const handleConfirmDelete = async () => {
     if (!taskToDelete) return;
@@ -563,6 +606,17 @@ const AppContent = () => {
         onOpenHelp={() => voice.setIsHelpOpen(true)}
         onDismissResponse={voice.dismissResponse}
         onRunExampleCommand={voice.runTextCommand}
+      />
+
+      {/* Real-Time Due Alarm & Voice Callout Modal */}
+      <TaskDueAlarmModal
+        task={activeAlarmTask}
+        isOpen={isAlarmOpen}
+        onDismiss={dismissAlarm}
+        onComplete={completeAlarmTask}
+        onSnooze={snoozeAlarm}
+        onMuteToggle={toggleMute}
+        isMuted={isMuted}
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />

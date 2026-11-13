@@ -80,31 +80,48 @@ export const getTimezoneDayBoundaries = (timeZone = 'UTC') => {
 };
 
 /**
- * Normalizes a date-only string or ISO timestamp into canonical instant and date string
+ * Normalizes a date-only string or ISO timestamp into canonical instant and date string,
+ * taking optional dueTime (HH:mm) into account.
  */
-export const normalizeDueDate = (input, timeZone = 'UTC') => {
+export const normalizeDueDate = (input, timeZone = 'UTC', dueTime = null) => {
   if (!input) {
-    return { dueDate: null, dueDateString: null };
+    return { dueDate: null, dueDateString: null, dueTime: null };
   }
+
+  const validTz = getValidTimezone(timeZone);
+  const getOffsetMs = (date) => {
+    const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
+    const tzDate = new Date(date.toLocaleString('en-US', { timeZone: validTz }));
+    return tzDate.getTime() - utcDate.getTime();
+  };
+
+  const formattedDueTime = dueTime && /^([01]\d|2[0-3]):([0-5]\d)$/.test(dueTime.trim()) ? dueTime.trim() : null;
 
   // If input is YYYY-MM-DD
   if (typeof input === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.trim())) {
     const dateStr = input.trim();
-    // End of that calendar day in user timezone
-    const boundaries = getTimezoneDayBoundaries(timeZone);
+    if (formattedDueTime) {
+      const localEstimate = new Date(`${dateStr}T${formattedDueTime}:00.000Z`);
+      const offsetMs = getOffsetMs(localEstimate);
+      return {
+        dueDate: new Date(localEstimate.getTime() - offsetMs),
+        dueDateString: dateStr,
+        dueTime: formattedDueTime
+      };
+    }
     return {
       dueDate: new Date(`${dateStr}T23:59:59.999Z`),
-      dueDateString: dateStr
+      dueDateString: dateStr,
+      dueTime: null
     };
   }
 
   const parsed = new Date(input);
   if (isNaN(parsed.getTime())) {
-    return { dueDate: null, dueDateString: null };
+    return { dueDate: null, dueDateString: null, dueTime: null };
   }
 
   // Extract date string in user timezone
-  const validTz = getValidTimezone(timeZone);
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: validTz,
     year: 'numeric',
@@ -114,6 +131,7 @@ export const normalizeDueDate = (input, timeZone = 'UTC') => {
 
   return {
     dueDate: parsed,
-    dueDateString: formatter.format(parsed)
+    dueDateString: formatter.format(parsed),
+    dueTime: formattedDueTime
   };
 };

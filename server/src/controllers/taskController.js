@@ -401,6 +401,7 @@ export const createTask = async (req, res, next) => {
       status,
       dueDate,
       dueDateString,
+      dueTime,
       category,
       assignedTo,
       collaboratorIds = [],
@@ -474,7 +475,7 @@ export const createTask = async (req, res, next) => {
     const targetWorkspaceId = workspaceId || (req.workspace ? req.workspace._id : null);
 
     const clientTz = getValidTimezone(req.headers['x-timezone']);
-    const dateNorm = normalizeDueDate(dueDateString || dueDate, clientTz);
+    const dateNorm = normalizeDueDate(dueDateString || dueDate, clientTz, dueTime);
 
     const task = await Task.create({
       user: req.user._id,
@@ -487,6 +488,7 @@ export const createTask = async (req, res, next) => {
       status: ['pending', 'in_progress', 'review', 'completed'].includes(status) ? status : 'pending',
       dueDate: dateNorm.dueDate,
       dueDateString: dateNorm.dueDateString,
+      dueTime: dateNorm.dueTime,
       category: category && category.trim() ? category.trim() : 'General',
       assignedTo: validAssignee,
       collaborators: validCollaborators,
@@ -618,14 +620,17 @@ export const updateTask = async (req, res, next) => {
       task.status = status;
     }
 
-    if (dueDate !== undefined || dueDateString !== undefined) {
+    if (dueDate !== undefined || dueDateString !== undefined || req.body.dueTime !== undefined) {
       const clientTz = getValidTimezone(req.headers['x-timezone']);
-      const dateNorm = normalizeDueDate(dueDateString || dueDate, clientTz);
-      if (dateNorm.dueDateString !== task.dueDateString) {
-        changes.dueDate = { old: task.dueDateString, new: dateNorm.dueDateString };
+      const targetDateInput = dueDateString !== undefined ? dueDateString : (dueDate !== undefined ? dueDate : task.dueDateString);
+      const targetTimeInput = req.body.dueTime !== undefined ? req.body.dueTime : task.dueTime;
+      const dateNorm = normalizeDueDate(targetDateInput, clientTz, targetTimeInput);
+      if (dateNorm.dueDateString !== task.dueDateString || dateNorm.dueTime !== task.dueTime) {
+        changes.dueDate = { old: task.dueDateString, new: dateNorm.dueDateString, dueTime: dateNorm.dueTime };
       }
       task.dueDate = dateNorm.dueDate;
       task.dueDateString = dateNorm.dueDateString;
+      task.dueTime = dateNorm.dueTime;
     }
 
     if (category && category.trim() && category.trim() !== task.category) {

@@ -32,6 +32,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
   const [priority, setPriority] = useState('medium');
   const [status, setStatus] = useState('pending');
   const [dueDate, setDueDate] = useState('');
+  const [dueTime, setDueTime] = useState('');
   const [category, setCategory] = useState('General');
   const [assignedTo, setAssignedTo] = useState('');
   const [workspaceId, setWorkspaceId] = useState('');
@@ -122,6 +123,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
         }
       }
       setDueDate(dateVal);
+      setDueTime(task.dueTime || '');
       setCategory(task.category || 'General');
     } else {
       setTitle('');
@@ -129,6 +131,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
       setPriority('medium');
       setStatus('pending');
       setDueDate('');
+      setDueTime('');
       setCategory('General');
       setAssignedTo('');
       setWorkspaceId(currentWorkspace?._id || '');
@@ -351,6 +354,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
       status,
       dueDate: dueDate || null,
       dueDateString: dueDate || null,
+      dueTime: dueTime || null,
       category: category.trim() || 'General',
       assignedTo: assignedTo || null,
       workspaceId: workspaceId || null,
@@ -592,17 +596,32 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
               </div>
             </div>
 
-            {/* Due Date & Category */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Due Date, Due Time & Category */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label htmlFor="task-due-date" className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                  Due Date <span className="text-slate-400 text-xs font-normal">(Local Date)</span>
+                  Due Date <span className="text-slate-400 text-xs font-normal">(Date)</span>
                 </label>
                 <input
                   id="task-due-date"
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
+                  disabled={isSubmitting}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="task-due-time" className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5 flex items-center justify-between">
+                  <span>Due Time</span>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold lowercase">alarm</span>
+                </label>
+                <input
+                  id="task-due-time"
+                  type="time"
+                  value={dueTime}
+                  onChange={(e) => setDueTime(e.target.value)}
                   disabled={isSubmitting}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />

@@ -53,7 +53,27 @@ export const TaskItem = ({
 
     const isDueToday = targetDateStr === todayStr;
     const isDueTomorrow = targetDateStr === tomorrowStr;
-    const isOverdue = targetDateStr < todayStr && !isCompleted;
+
+    let timeLabel = '';
+    let isTimeOverdue = false;
+    if (task.dueTime) {
+      const [h, m] = task.dueTime.split(':').map(Number);
+      if (!isNaN(h) && !isNaN(m)) {
+        const period = h >= 12 ? 'PM' : 'AM';
+        const displayHours = h % 12 || 12;
+        timeLabel = `${displayHours}:${String(m).padStart(2, '0')} ${period}`;
+
+        if (isDueToday) {
+          const currentHours = now.getHours();
+          const currentMinutes = now.getMinutes();
+          if (currentHours > h || (currentHours === h && currentMinutes >= m)) {
+            isTimeOverdue = true;
+          }
+        }
+      }
+    }
+
+    const isOverdue = (targetDateStr < todayStr || isTimeOverdue) && !isCompleted;
 
     const [y, m, d] = targetDateStr.split('-').map(Number);
     const dateObj = new Date(y, m - 1, d);
@@ -67,10 +87,15 @@ export const TaskItem = ({
     if (isDueToday) label = 'Today';
     else if (isDueTomorrow) label = 'Tomorrow';
 
+    if (timeLabel) {
+      label = `${label} at ${timeLabel}`;
+    }
+
     return {
       label,
       isOverdue,
       isDueToday,
+      timeLabel,
       targetDateStr
     };
   };
