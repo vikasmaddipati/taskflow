@@ -25,6 +25,11 @@ export const TrashView = ({ showToast = () => {}, refreshTrigger = 0, onTaskRest
   const [taskToPermanentDelete, setTaskToPermanentDelete] = useState(null);
   const [isEmptyTrashModalOpen, setIsEmptyTrashModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [localRefresh, setLocalRefresh] = useState(0);
+
+  const fetchTrash = useCallback(() => {
+    setLocalRefresh((c) => c + 1);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -48,7 +53,7 @@ export const TrashView = ({ showToast = () => {}, refreshTrigger = 0, onTaskRest
         }
       } catch (err) {
         if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
-        showToast(err.response?.data?.message || 'Failed to load trash', 'error');
+        showToast({ type: 'error', message: err.response?.data?.message || 'Failed to load trash' });
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
@@ -61,19 +66,19 @@ export const TrashView = ({ showToast = () => {}, refreshTrigger = 0, onTaskRest
     return () => {
       controller.abort();
     };
-  }, [page, search, showToast, refreshTrigger]);
+  }, [page, search, showToast, refreshTrigger, localRefresh]);
 
   const handleRestore = async (taskId, taskTitle) => {
     setActionLoading(true);
     try {
       const res = await api.patch(`/tasks/${taskId}/restore`);
       if (res.data.success) {
-        showToast(`Restored "${taskTitle || 'Task'}"`, 'success');
+        showToast({ type: 'success', message: `Restored "${taskTitle || 'Task'}"` });
         onTaskRestored();
         fetchTrash();
       }
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to restore task', 'error');
+      showToast({ type: 'error', message: err.response?.data?.message || 'Failed to restore task' });
     } finally {
       setActionLoading(false);
     }
@@ -85,12 +90,12 @@ export const TrashView = ({ showToast = () => {}, refreshTrigger = 0, onTaskRest
     try {
       const res = await api.delete(`/tasks/${taskToPermanentDelete._id}/permanent`);
       if (res.data.success) {
-        showToast('Task permanently deleted', 'success');
+        showToast({ type: 'success', message: 'Task permanently deleted' });
         setTaskToPermanentDelete(null);
         fetchTrash();
       }
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to delete task permanently', 'error');
+      showToast({ type: 'error', message: err.response?.data?.message || 'Failed to delete task permanently' });
     } finally {
       setActionLoading(false);
     }
@@ -101,12 +106,12 @@ export const TrashView = ({ showToast = () => {}, refreshTrigger = 0, onTaskRest
     try {
       const res = await api.delete('/tasks/trash/empty');
       if (res.data.success) {
-        showToast(res.data.message || 'Trash emptied successfully', 'success');
+        showToast({ type: 'success', message: res.data.message || 'Trash emptied successfully' });
         setIsEmptyTrashModalOpen(false);
         fetchTrash();
       }
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to empty trash', 'error');
+      showToast({ type: 'error', message: err.response?.data?.message || 'Failed to empty trash' });
     } finally {
       setActionLoading(false);
     }

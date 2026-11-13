@@ -28,6 +28,9 @@ export const AuthProvider = ({ children }) => {
       if (csrfToken) {
         localStorage.setItem('tm_csrf_token', csrfToken);
       }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('auth:tokens-updated'));
+      }
     } catch {
       // ignore storage access errors
     }
@@ -408,7 +411,7 @@ export const AuthProvider = ({ children }) => {
       const response = await api.put('/auth/profile', data);
       if (response.data.success && response.data.user) {
         setUser(response.data.user);
-        if (response.data.user.theme) {
+        if (response.data.user.theme && !data?.theme) {
           setTheme(response.data.user.theme);
         }
       }

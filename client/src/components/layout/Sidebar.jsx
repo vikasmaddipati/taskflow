@@ -98,7 +98,7 @@ export const Sidebar = ({
   };
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-slate-900 text-slate-300 dark:bg-slate-950 dark:border-r dark:border-slate-800">
+    <div className="flex flex-col h-full pt-[var(--app-safe-top)] pb-[var(--app-safe-bottom)] bg-slate-900 text-slate-300 dark:bg-slate-950 dark:border-r dark:border-slate-800">
       {/* Brand Header */}
       <div className="flex items-center justify-between px-6 h-16 border-b border-slate-800">
         <div className="flex items-center gap-2.5">

@@ -416,7 +416,8 @@ export const processAiAssistantMessage = async ({
   organization,
   user,
   clientTimezone = 'UTC',
-  activeWorkspaceId = null
+  activeWorkspaceId = null,
+  source = 'web'
 }) => {
   const cleanMsg = (message || '').trim();
   const lower = cleanMsg.toLowerCase();
@@ -430,6 +431,12 @@ export const processAiAssistantMessage = async ({
     (lower.includes('schedule') && (lower.includes('tomorrow') || lower.includes('at') || lower.includes('task') || lower.includes('meeting'))) ||
     /\b(due tomorrow|due next|due on|due at)\b/i.test(lower)
   ) {
+    if (source === 'voice') {
+      return {
+        reply: "I didn't quite catch all the details for that task. Please say 'create a task' so we can go through the name, due date, and priority step by step.",
+        action: 'clarify'
+      };
+    }
     const quotaCheck = await checkQuota(orgId, 'tasks_created');
     if (!quotaCheck.allowed) {
       return {

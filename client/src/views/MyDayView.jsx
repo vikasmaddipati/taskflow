@@ -14,6 +14,7 @@ export const MyDayView = ({
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -41,7 +42,7 @@ export const MyDayView = ({
     return () => {
       controller.abort();
     };
-  }, [refreshTrigger]);
+  }, [refreshTrigger, retryCount]);
 
   const now = new Date();
   const todayStr = new Intl.DateTimeFormat('en-CA').format(now);
@@ -99,7 +100,7 @@ export const MyDayView = ({
         <div className="p-6 bg-rose-50 dark:bg-rose-950/40 rounded-2xl border border-rose-200 text-center">
           <p className="text-sm font-medium text-rose-600 dark:text-rose-400">{error}</p>
           <button
-            onClick={fetchMyDayTasks}
+            onClick={() => setRetryCount((c) => c + 1)}
             className="mt-3 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-semibold"
           >
             Retry

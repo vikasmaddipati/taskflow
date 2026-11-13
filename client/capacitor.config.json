@@ -8,5 +8,10 @@
       "taskflow.zerosyntax.in",
       "*.zerosyntax.in"
     ]
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "native"
+    }
   }
 }

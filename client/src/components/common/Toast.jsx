@@ -31,7 +31,7 @@ export const Toast = ({ toast, onClose }) => {
   };
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 max-w-md animate-in fade-in slide-in-from-bottom-5 duration-200">
+    <div className="fixed bottom-[calc(1.25rem+var(--app-safe-bottom))] right-5 z-50 max-w-md animate-in fade-in slide-in-from-bottom-5 duration-200">
       <div
         className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg backdrop-blur-sm transition-all ${
           styles[type] || styles.info

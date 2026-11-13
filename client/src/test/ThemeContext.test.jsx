@@ -15,31 +15,18 @@ const ThemeConsumer = () => {
       <button onClick={() => setTheme('dark')} data-testid="set-dark-btn">
         Set Dark
       </button>
-      <button onClick={() => setTheme('light')} data-testid="set-light-btn">
-        Set Light
-      </button>
     </div>
   );
 };
 
-describe('ThemeContext (Theme Switching & DOM Synchronization)', () => {
+describe('ThemeContext (Light Mode Enforcement)', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.classList.remove('dark');
   });
 
-  it('defaults to light theme when no storage preference exists', () => {
-    render(
-      <ThemeProvider>
-        <ThemeConsumer />
-      </ThemeProvider>
-    );
-
-    expect(screen.getByTestId('current-theme')).toHaveTextContent('light');
-    expect(document.documentElement.classList.contains('dark')).toBe(false);
-  });
-
-  it('reads stored preference from localStorage on mount', () => {
+  it('defaults to light theme and removes any dark class', () => {
+    document.documentElement.classList.add('dark');
     localStorage.setItem('tm_theme', 'dark');
 
     render(
@@ -48,35 +35,12 @@ describe('ThemeContext (Theme Switching & DOM Synchronization)', () => {
       </ThemeProvider>
     );
 
-    expect(screen.getByTestId('current-theme')).toHaveTextContent('dark');
-    expect(document.documentElement.classList.contains('dark')).toBe(true);
-  });
-
-  it('toggles theme and updates document class and localStorage', async () => {
-    const user = userEvent.setup();
-
-    render(
-      <ThemeProvider>
-        <ThemeConsumer />
-      </ThemeProvider>
-    );
-
-    const toggleBtn = screen.getByTestId('toggle-btn');
-
-    // Toggle to dark
-    await user.click(toggleBtn);
-    expect(screen.getByTestId('current-theme')).toHaveTextContent('dark');
-    expect(document.documentElement.classList.contains('dark')).toBe(true);
-    expect(localStorage.getItem('tm_theme')).toBe('dark');
-
-    // Toggle back to light
-    await user.click(toggleBtn);
     expect(screen.getByTestId('current-theme')).toHaveTextContent('light');
     expect(document.documentElement.classList.contains('dark')).toBe(false);
     expect(localStorage.getItem('tm_theme')).toBe('light');
   });
 
-  it('allows setting explicit theme via setTheme', async () => {
+  it('keeps light mode active when toggleTheme or setTheme("dark") is called', async () => {
     const user = userEvent.setup();
 
     render(
@@ -85,12 +49,13 @@ describe('ThemeContext (Theme Switching & DOM Synchronization)', () => {
       </ThemeProvider>
     );
 
-    await user.click(screen.getByTestId('set-dark-btn'));
-    expect(screen.getByTestId('current-theme')).toHaveTextContent('dark');
-    expect(localStorage.getItem('tm_theme')).toBe('dark');
-
-    await user.click(screen.getByTestId('set-light-btn'));
+    await user.click(screen.getByTestId('toggle-btn'));
     expect(screen.getByTestId('current-theme')).toHaveTextContent('light');
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+
+    await user.click(screen.getByTestId('set-dark-btn'));
+    expect(screen.getByTestId('current-theme')).toHaveTextContent('light');
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
     expect(localStorage.getItem('tm_theme')).toBe('light');
   });
 });

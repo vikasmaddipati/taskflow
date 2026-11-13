@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AuthProvider, useAuth } from '../context/AuthContext';
-import { ThemeProvider } from '../context/ThemeContext';
+import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import api from '../services/api';
 
 // Mock API service
@@ -128,5 +128,42 @@ describe('AuthContext (TDZ Regression Protection & Auth State Lifecycle)', () =>
       expect(screen.getByTestId('auth-status')).toHaveTextContent('Guest');
     });
     expect(screen.queryByTestId('user-email')).toBeNull();
+  });
+
+  it('keeps light mode active even when authenticated user profile has dark theme', async () => {
+    document.documentElement.classList.remove('dark');
+
+    api.get.mockImplementation((url) => {
+      if (url === '/auth/session') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            user: { _id: 'u123', name: 'Jane', email: 'jane@example.com', theme: 'dark', isEmailVerified: true }
+          }
+        });
+      }
+      return Promise.resolve({ data: { success: true, organizations: [], workspaces: [] } });
+    });
+
+    const ThemeAndAuthConsumer = () => {
+      const { isAuthenticated, loading } = useAuth();
+      const { theme } = useTheme();
+      if (loading) return <div>Auth Loading...</div>;
+      return (
+        <div>
+          <span data-testid="auth-status">{isAuthenticated ? 'Authenticated' : 'Guest'}</span>
+          <span data-testid="theme-value">{theme}</span>
+        </div>
+      );
+    };
+
+    renderWithProviders(<ThemeAndAuthConsumer />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-status')).toHaveTextContent('Authenticated');
+    });
+
+    expect(screen.getByTestId('theme-value')).toHaveTextContent('light');
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
   });
 });

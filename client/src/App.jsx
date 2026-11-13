@@ -20,8 +20,10 @@ import { TaskModal } from './components/common/TaskModal';
 import { DeleteConfirmModal } from './components/common/DeleteConfirmModal';
 import { CreateOrgModal } from './components/common/CreateOrgModal';
 import { AiCopilotDrawer } from './components/ai/AiCopilotDrawer';
+import { VoiceAssistantHUD } from './components/voice/VoiceAssistantHUD';
 import { Toast } from './components/common/Toast';
-import api from './services/api';
+import { useVoiceAssistant } from './hooks/useVoiceAssistant';
+import api, { getBaseURL, syncOfflineMutations } from './services/api';
 
 const VIEW_PATH_MAP = {
   dashboard: '/dashboard',
@@ -66,7 +68,20 @@ const getViewFromLocation = () => {
 };
 
 const AppContent = () => {
-  const { isAuthenticated, loading: authLoading, currentOrg, user } = useAuth();
+  const {
+    isAuthenticated,
+    loading: authLoading,
+    currentOrg,
+    currentWorkspace,
+    user,
+    organizations,
+    workspaces,
+    fetchOrganizations,
+    switchOrganization,
+    switchWorkspace,
+    fetchWorkspaces,
+    logout
+  } = useAuth();
 
   // Navigation state with deep link URL synchronization
   const [currentView, setCurrentView] = useState(() => getViewFromLocation());
@@ -168,9 +183,11 @@ const AppContent = () => {
   // Real-Time Server-Sent Events (SSE) stream for instant multi-user workspace sync
   useEffect(() => {
     if (!isAuthenticated || !currentOrg?._id || typeof EventSource === 'undefined') return;
+    if (window.location.protocol === 'capacitor:') return;
     let eventSource = null;
     try {
-      eventSource = new EventSource(`/api/v1/events`, { withCredentials: true });
+      const base = getBaseURL().replace(/\/+$/, '');
+      eventSource = new EventSource(`${base}/v1/events`, { withCredentials: true });
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
@@ -234,6 +251,31 @@ const AppContent = () => {
     setEditingTask(task);
     setIsTaskModalOpen(true);
   };
+
+  const voice = useVoiceAssistant({
+    isAuthenticated,
+    context: {
+      user,
+      navigateToView,
+      openCreateModal: handleOpenCreateModal,
+      openEditModal: handleOpenEditModal,
+      openCreateOrgModal: () => setIsCreateOrgModalOpen(true),
+      setAiCopilotOpen: setIsAiCopilotOpen,
+      setMobileSidebarOpen: setIsMobileOpen,
+      refreshData: () => setRefreshTrigger((prev) => prev + 1),
+      syncOffline: syncOfflineMutations,
+      showToast,
+      organizations,
+      workspaces,
+      currentOrg,
+      currentWorkspace,
+      fetchOrganizations,
+      switchOrganization,
+      switchWorkspace,
+      fetchWorkspaces,
+      logout
+    }
+  });
 
   // Submit task (create or update)
   const handleSubmitTask = async (taskData) => {
@@ -318,7 +360,7 @@ const AppContent = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex text-slate-900 dark:text-slate-100 transition-colors">
+    <div className="min-h-screen w-full max-w-full overflow-x-clip bg-slate-50 dark:bg-slate-950 flex text-slate-900 dark:text-slate-100 transition-colors">
       {/* Sidebar (Desktop + Mobile) */}
       <Sidebar
         currentView={currentView}
@@ -329,23 +371,26 @@ const AppContent = () => {
       />
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 w-full">
         <Navbar
           currentView={currentView}
           onOpenMobileMenu={() => setIsMobileOpen(true)}
           onOpenCreateModal={() => handleOpenCreateModal()}
           onOpenCreateOrgModal={() => setIsCreateOrgModalOpen(true)}
           onToggleAiCopilot={() => setIsAiCopilotOpen((prev) => !prev)}
+          onToggleVoice={voice.toggleSingleListen}
+          isVoiceListening={voice.voiceState === 'listening'}
+          isWakeMode={voice.isWakeMode}
         />
 
         {/* Email Verification Banner */}
         {user && !user.isEmailVerified && (
           <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-xs text-amber-700 dark:text-amber-300 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="font-bold uppercase tracking-wider text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              <span className="font-bold uppercase tracking-wider text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full shrink-0">
                 Verification Required
               </span>
-              <span>
+              <span className="min-w-0 break-words">
                 Your email address ({user.email}) has not been confirmed. Please verify your email to secure your account.
               </span>
             </div>
@@ -360,7 +405,7 @@ const AppContent = () => {
           </div>
         )}
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-4 pb-[calc(5.5rem+var(--app-safe-bottom))] sm:p-6 sm:pb-[calc(2rem+var(--app-safe-bottom))] lg:p-8 lg:pb-[calc(2rem+var(--app-safe-bottom))] max-w-7xl w-full mx-auto">
           {currentView === 'dashboard' && (
             <DashboardView
               onNavigate={navigateToView}
@@ -368,6 +413,7 @@ const AppContent = () => {
               onEditTask={handleOpenEditModal}
               onDeleteTask={handleOpenDeleteModal}
               onToggleStatus={handleToggleStatus}
+              refreshTrigger={refreshTrigger}
             />
           )}
 
@@ -483,7 +529,7 @@ const AppContent = () => {
       {!isAiCopilotOpen && currentView !== 'ai' && (
         <button
           onClick={() => setIsAiCopilotOpen(true)}
-          className="fixed bottom-6 right-6 z-40 p-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 group cursor-pointer"
+          className="fixed bottom-[calc(1.5rem+var(--app-safe-bottom))] right-6 z-40 p-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 group cursor-pointer"
           title="Open AI Copilot"
         >
           <Sparkles className="w-5 h-5 animate-pulse" />
@@ -498,6 +544,25 @@ const AppContent = () => {
         onOpenFullView={() => navigateToView('ai')}
         onTaskAction={() => setRefreshTrigger((p) => p + 1)}
         showToast={showToast}
+      />
+
+      {/* TaskFlow Voice Assistant HUD & Command Guide */}
+      <VoiceAssistantHUD
+        isPanelOpen={voice.isPanelOpen}
+        voiceState={voice.voiceState}
+        isWakeMode={voice.isWakeMode}
+        isAwake={voice.isAwake}
+        partialText={voice.partialText}
+        lastTranscript={voice.lastTranscript}
+        lastResponse={voice.lastResponse}
+        errorMessage={voice.errorMessage}
+        isHelpOpen={voice.isHelpOpen}
+        onToggleSingleListen={voice.toggleSingleListen}
+        onToggleWakeMode={voice.toggleWakeMode}
+        onCloseHelp={() => voice.setIsHelpOpen(false)}
+        onOpenHelp={() => voice.setIsHelpOpen(true)}
+        onDismissResponse={voice.dismissResponse}
+        onRunExampleCommand={voice.runTextCommand}
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />

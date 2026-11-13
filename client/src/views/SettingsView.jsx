@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   User,
-  Sun,
-  Moon,
   Shield,
   Save,
   CheckCircle2,
@@ -22,13 +20,11 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
 import { getBaseURL } from '../services/api';
 import api from '../services/api';
 
 export const SettingsView = ({ showToast }) => {
   const { user, updateProfile, fetchOrganizations, logout, currentOrg } = useAuth();
-  const { theme, setTheme } = useTheme();
 
   // Profile fields
   const [name, setName] = useState(user?.name || '');
@@ -208,7 +204,7 @@ export const SettingsView = ({ showToast }) => {
     setIsUpdatingProfile(true);
     setProfileMessage(null);
 
-    const res = await updateProfile({ name: name.trim(), theme });
+    const res = await updateProfile({ name: name.trim(), theme: 'light' });
     setIsUpdatingProfile(false);
 
     if (res.success) {
@@ -217,13 +213,6 @@ export const SettingsView = ({ showToast }) => {
     } else {
       setProfileMessage({ type: 'error', text: res.message || 'Failed to update profile' });
     }
-  };
-
-  // Handle Theme Change
-  const handleThemeChange = async (newTheme) => {
-    setTheme(newTheme);
-    await updateProfile({ theme: newTheme });
-    showToast?.({ type: 'info', message: `Theme changed to ${newTheme} mode` });
   };
 
   // Handle Create Organization

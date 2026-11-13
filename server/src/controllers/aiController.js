@@ -31,7 +31,8 @@ export const chatWithAi = async (req, res, next) => {
       organization: req.organization,
       user: req.user,
       clientTimezone,
-      activeWorkspaceId
+      activeWorkspaceId,
+      source: req.body?.source || 'web'
     });
 
     res.status(200).json({

@@ -170,6 +170,7 @@ api.interceptors.response.use(
         if (res.data.csrfToken) {
           localStorage.setItem('tm_csrf_token', res.data.csrfToken);
         }
+        window.dispatchEvent(new Event('auth:tokens-updated'));
         processQueue(null, newToken);
         return api(originalRequest);
       }

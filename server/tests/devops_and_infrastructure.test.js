@@ -64,11 +64,12 @@ async function runDevOpsTests() {
       detached: false,
       env: { ...process.env, HOST: '127.0.0.1' }
     });
+    let spawnStderr = '';
     spawnedServer.stdout.on('data', () => {});
-    spawnedServer.stderr.on('data', () => {});
+    spawnedServer.stderr.on('data', (d) => { spawnStderr += d.toString(); });
 
     let running = false;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 25; i++) {
       await new Promise((r) => setTimeout(r, 600));
       if (await isServerRunning()) {
         running = true;
@@ -78,6 +79,7 @@ async function runDevOpsTests() {
 
     if (!running) {
       console.error('[Error] Could not connect to API server.');
+      if (spawnStderr) console.error('[Server Stderr]:', spawnStderr);
       process.exit(1);
     }
     console.log('[Setup] Server running.\n');

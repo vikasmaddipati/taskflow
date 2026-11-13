@@ -19,7 +19,8 @@ export const DashboardView = ({
   onOpenCreateModal,
   onEditTask,
   onDeleteTask,
-  onToggleStatus
+  onToggleStatus,
+  refreshTrigger = 0
 }) => {
   const [data, setData] = useState({
     stats: {
@@ -58,7 +59,7 @@ export const DashboardView = ({
 
   useEffect(() => {
     fetchStats();
-  }, []);
+  }, [refreshTrigger]);
 
   const { stats, recentTasks, upcomingDeadlines } = data;
 
@@ -212,7 +213,7 @@ export const DashboardView = ({
               {stats.completed} of {stats.total} tasks completed
             </p>
           </div>
-          <div className="flex items-center gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-3 text-xs">
             <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500" /> High ({stats.priorityBreakdown?.high || 0})
             </span>
