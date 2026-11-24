@@ -65,6 +65,10 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true
     },
+    emailAlertsEnabled: {
+      type: Boolean,
+      default: true
+    },
     currentOrganization: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',

@@ -1385,6 +1385,9 @@ export const getMe = async (req, res) => {
       id: req.user._id,
       name: req.user.name,
       email: req.user.email,
+      phone: req.user.phone || null,
+      phoneAlertsEnabled: req.user.phoneAlertsEnabled !== false,
+      emailAlertsEnabled: req.user.emailAlertsEnabled !== false,
       theme: req.user.theme,
       avatar: req.user.avatar,
       authProviders: req.user.authProviders,
@@ -1423,6 +1426,10 @@ export const updateProfile = async (req, res, next) => {
 
     if (req.body.phoneAlertsEnabled !== undefined) {
       user.phoneAlertsEnabled = Boolean(req.body.phoneAlertsEnabled);
+    }
+
+    if (req.body.emailAlertsEnabled !== undefined) {
+      user.emailAlertsEnabled = Boolean(req.body.emailAlertsEnabled);
     }
 
     let passwordChanged = false;
@@ -1477,6 +1484,9 @@ export const updateProfile = async (req, res, next) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone || null,
+        phoneAlertsEnabled: user.phoneAlertsEnabled !== false,
+        emailAlertsEnabled: user.emailAlertsEnabled !== false,
         theme: user.theme,
         avatar: user.avatar,
         authProviders: user.authProviders,

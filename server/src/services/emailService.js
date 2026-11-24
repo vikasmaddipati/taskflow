@@ -477,8 +477,8 @@ export const resolveTaskAssignees = async (task) => {
   // 1. Primary assignee or task creator
   let primary = task.assignedTo || task.user;
   if (primary) {
-    if (!primary.email && primary.toString) {
-      primary = await User.findById(primary).select('name email');
+    if (!primary.email && (primary._id || typeof primary === 'string')) {
+      primary = await User.findById(primary._id || primary).select('name email emailAlertsEnabled');
     }
     if (primary && primary.email) {
       const key = primary.email.toLowerCase();
@@ -491,8 +491,8 @@ export const resolveTaskAssignees = async (task) => {
   if (Array.isArray(task.collaborators) && task.collaborators.length > 0) {
     for (let col of task.collaborators) {
       let colUser = col;
-      if (!colUser.email && colUser.toString) {
-        colUser = await User.findById(colUser).select('name email');
+      if (!colUser.email && (colUser._id || typeof colUser === 'string')) {
+        colUser = await User.findById(colUser._id || colUser).select('name email emailAlertsEnabled');
       }
       if (colUser && colUser.email) {
         const key = colUser.email.toLowerCase();
@@ -523,7 +523,7 @@ export const notifyTaskAssignedEmail = async (task, orgId, assignerName = 'Admin
 
     // Dispatch personalized assignment email to every team member given this task
     for (const member of assignees) {
-      if (member.email) {
+      if (member.email && member.emailAlertsEnabled !== false) {
         await sendTaskAssignmentEmail({
           to: member.email,
           recipientName: member.name,
@@ -537,7 +537,7 @@ export const notifyTaskAssignedEmail = async (task, orgId, assignerName = 'Admin
     }
 
     // Also notify configured Admin Email if different from assigned members
-    const adminEmail = org.emailSettings?.adminEmail || org.owner?.email;
+    const adminEmail = org.emailSettings?.adminEmail || (org.owner?.emailAlertsEnabled !== false ? org.owner?.email : null);
     const isMemberAdmin = assignees.some((m) => m.email?.toLowerCase() === adminEmail?.toLowerCase());
     if (adminEmail && !isMemberAdmin) {
       await sendTaskAssignmentEmail({
@@ -566,7 +566,7 @@ export const notifyTaskCompletedEmail = async (task, orgId, actorName = 'Team Me
     if (org.emailSettings && org.emailSettings.enabled === false) return;
     if (org.emailSettings && org.emailSettings.notifyOnTaskCompleted === false) return;
 
-    const adminEmail = org.emailSettings?.adminEmail || org.owner?.email;
+    const adminEmail = org.emailSettings?.adminEmail || (org.owner?.emailAlertsEnabled !== false ? org.owner?.email : null);
     if (adminEmail) {
       await sendTaskCompletedEmail({
         to: adminEmail,
@@ -597,7 +597,7 @@ export const notifyTask30MinWarningEmail = async (task, orgId) => {
 
     // Send 30-min reminder to every team member given the task
     for (const member of assignees) {
-      if (member.email) {
+      if (member.email && member.emailAlertsEnabled !== false) {
         await sendTaskReminderEmail({
           to: member.email,
           recipientName: member.name,
@@ -607,7 +607,7 @@ export const notifyTask30MinWarningEmail = async (task, orgId) => {
       }
     }
 
-    const adminEmail = org.emailSettings?.adminEmail || org.owner?.email;
+    const adminEmail = org.emailSettings?.adminEmail || (org.owner?.emailAlertsEnabled !== false ? org.owner?.email : null);
     const isMemberAdmin = assignees.some((m) => m.email?.toLowerCase() === adminEmail?.toLowerCase());
     if (adminEmail && !isMemberAdmin) {
       await sendTaskReminderEmail({
@@ -637,7 +637,7 @@ export const notifyTaskOverdueEmail = async (task, orgId) => {
 
     // Send overdue notification to every team member assigned to this task
     for (const member of assignees) {
-      if (member.email) {
+      if (member.email && member.emailAlertsEnabled !== false) {
         await sendTaskOverdueEmail({
           to: member.email,
           recipientName: member.name,
@@ -646,7 +646,7 @@ export const notifyTaskOverdueEmail = async (task, orgId) => {
       }
     }
 
-    const adminEmail = org.emailSettings?.adminEmail || org.owner?.email;
+    const adminEmail = org.emailSettings?.adminEmail || (org.owner?.emailAlertsEnabled !== false ? org.owner?.email : null);
     const isMemberAdmin = assignees.some((m) => m.email?.toLowerCase() === adminEmail?.toLowerCase());
     if (adminEmail && !isMemberAdmin) {
       await sendTaskOverdueEmail({

@@ -15,7 +15,8 @@ import {
   Webhook,
   Send,
   PhoneCall,
-  Phone
+  Phone,
+  Mail
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getBaseURL } from '../services/api';
@@ -28,6 +29,7 @@ export const SettingsView = ({ showToast }) => {
   const [name, setName] = useState(user?.name || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [phoneAlertsEnabled, setPhoneAlertsEnabled] = useState(user?.phoneAlertsEnabled !== false);
+  const [emailAlertsEnabled, setEmailAlertsEnabled] = useState(user?.emailAlertsEnabled !== false);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isTestingCall, setIsTestingCall] = useState(false);
   const [profileMessage, setProfileMessage] = useState(null);
@@ -37,6 +39,7 @@ export const SettingsView = ({ showToast }) => {
       if (user.name) setName(user.name);
       if (user.phone !== undefined) setPhone(user.phone || '');
       if (user.phoneAlertsEnabled !== undefined) setPhoneAlertsEnabled(user.phoneAlertsEnabled !== false);
+      if (user.emailAlertsEnabled !== undefined) setEmailAlertsEnabled(user.emailAlertsEnabled !== false);
     }
   }, [user]);
 
@@ -216,6 +219,7 @@ export const SettingsView = ({ showToast }) => {
       name: name.trim(),
       phone: phone.trim() || null,
       phoneAlertsEnabled,
+      emailAlertsEnabled,
       theme: 'light'
     });
     setIsUpdatingProfile(false);
@@ -575,6 +579,31 @@ export const SettingsView = ({ showToast }) => {
                 <PhoneCall className={`w-3.5 h-3.5 ${isTestingCall ? 'animate-bounce' : ''}`} />
                 {isTestingCall ? 'Calling...' : 'Test Incoming Phone Call'}
               </button>
+            </div>
+          </div>
+
+          {/* Email Notification Alerts Toggle */}
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  Task & Deadline Email Notifications
+                </span>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Receive email alerts for task assignments, 30-minute upcoming warnings, and overdue status. Turn off to stop all task emails to {user?.email || 'your email'}.
+                </p>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={emailAlertsEnabled}
+                  onChange={(e) => setEmailAlertsEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600" />
+              </label>
             </div>
           </div>
 

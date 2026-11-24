@@ -11,7 +11,8 @@ import {
   RefreshCw,
   Plus,
   Phone,
-  Layers
+  Layers,
+  Mail
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -61,6 +62,19 @@ export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => 
   const [testResult, setTestResult] = useState(null);
   const [liveDispatches, setLiveDispatches] = useState([]);
 
+  // Email configuration state
+  const [emailSettings, setEmailSettings] = useState({
+    adminEmail: '',
+    enabled: true,
+    notifyOnTaskAssigned: true,
+    notifyOnTaskCompleted: true,
+    notifyBefore30Min: true,
+    notifyOnOverdue: true
+  });
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [isSendingEmailTest, setIsSendingEmailTest] = useState(false);
+  const [emailTestResult, setEmailTestResult] = useState(null);
+
   // Fetch admin dashboard overview
   const fetchOverview = useCallback(async () => {
     try {
@@ -76,6 +90,13 @@ export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => 
             ...prev,
             ...res.data.data.whatsappSettings,
             adminPhone: res.data.data.whatsappSettings.adminPhone || user?.phone || ''
+          }));
+        }
+        if (res.data.data.emailSettings) {
+          setEmailSettings((prev) => ({
+            ...prev,
+            ...res.data.data.emailSettings,
+            adminEmail: res.data.data.emailSettings.adminEmail ?? ''
           }));
         }
       }
@@ -178,6 +199,46 @@ export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => 
     }
   };
 
+  // Save email alert settings
+  const handleSaveEmailSettings = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    try {
+      setIsSavingEmail(true);
+      const res = await api.put('/admin/email-settings', {
+        ...emailSettings,
+        adminEmail: emailSettings.adminEmail ? emailSettings.adminEmail.trim() : null
+      });
+      if (res.data.success) {
+        if (showToast) showToast('Email notification settings saved successfully!', 'success');
+      }
+    } catch (err) {
+      if (showToast) showToast(err.response?.data?.message || 'Failed to save email settings', 'error');
+    } finally {
+      setIsSavingEmail(false);
+    }
+  };
+
+  // Dispatch test email alert
+  const handleTestEmail = async () => {
+    try {
+      setIsSendingEmailTest(true);
+      setEmailTestResult(null);
+      const res = await api.post('/admin/email-test', {
+        email: emailSettings.adminEmail || undefined
+      });
+      if (res.data.success) {
+        setEmailTestResult({ success: true, message: res.data.message });
+        if (showToast) showToast('Test notification email dispatched!', 'success');
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to dispatch test email';
+      setEmailTestResult({ success: false, message: msg });
+      if (showToast) showToast(msg, 'error');
+    } finally {
+      setIsSendingEmailTest(false);
+    }
+  };
+
   // Run instant scheduler deadline check
   const handleRunScan = async () => {
     try {
@@ -271,6 +332,21 @@ export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => 
           <MessageSquare className="w-4 h-4" />
           <span>Admin WhatsApp Alerts</span>
           {whatsappSettings.enabled && (
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('email')}
+          className={`py-3 px-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-all ${
+            activeTab === 'email'
+              ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400 dark:border-emerald-400'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+          }`}
+        >
+          <Mail className="w-4 h-4" />
+          <span>Admin Email Alerts</span>
+          {emailSettings.enabled && (
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           )}
         </button>
@@ -829,6 +905,196 @@ export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => 
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: ADMIN EMAIL NOTIFICATIONS CONFIGURATION */}
+      {activeTab === 'email' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-6">
+            <form onSubmit={handleSaveEmailSettings} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6 sm:p-8 space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Mail className="w-5 h-5 text-emerald-600" />
+                    <span>Email Dispatch & Notifications Center</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Control automated task alerts, deadline warnings, and overdue notification emails
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 font-medium">Master Switch</span>
+                  <input
+                    type="checkbox"
+                    checked={emailSettings.enabled}
+                    onChange={(e) => setEmailSettings({ ...emailSettings, enabled: e.target.checked })}
+                    className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Admin Email Input & Clear button */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200">
+                    Admin Notification Email Address
+                  </label>
+                  {emailSettings.adminEmail && (
+                    <button
+                      type="button"
+                      onClick={() => setEmailSettings({ ...emailSettings, adminEmail: '' })}
+                      className="text-xs font-semibold text-rose-600 hover:text-rose-700 underline cursor-pointer"
+                    >
+                      Remove My Email From Alerts
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Mail className="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="email"
+                    placeholder="Enter email or leave blank to stop receiving admin copies"
+                    value={emailSettings.adminEmail || ''}
+                    onChange={(e) => setEmailSettings({ ...emailSettings, adminEmail: e.target.value })}
+                    className="w-full pl-11 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  If configured, copies of all workspace task assignments, reminders, and completions are sent here. Leave this completely blank or click <strong>Remove My Email</strong> above to stop admin alert emails.
+                </p>
+              </div>
+
+              {/* Notification Toggles */}
+              <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                  Automated Email Event Triggers
+                </h3>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={emailSettings.notifyBefore30Min}
+                    onChange={(e) => setEmailSettings({ ...emailSettings, notifyBefore30Min: e.target.checked })}
+                    className="w-4 h-4 mt-1 text-emerald-600 rounded focus:ring-emerald-500"
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                      30 Minutes Before Due Time Alert
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      Sends an upcoming reminder email 30 minutes before task due time so teammates wrap up on schedule.
+                    </div>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={emailSettings.notifyOnOverdue}
+                    onChange={(e) => setEmailSettings({ ...emailSettings, notifyOnOverdue: e.target.checked })}
+                    className="w-4 h-4 mt-1 text-emerald-600 rounded focus:ring-emerald-500"
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                      Due Time Completed / Overdue Alert
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      Sends an overdue email notification the moment a task's due date and time passes without being marked finished.
+                    </div>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={emailSettings.notifyOnTaskCompleted}
+                    onChange={(e) => setEmailSettings({ ...emailSettings, notifyOnTaskCompleted: e.target.checked })}
+                    className="w-4 h-4 mt-1 text-emerald-600 rounded focus:ring-emerald-500"
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                      Task Completion Notice
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      Sends a confirmation email when an assigned team member completes a task.
+                    </div>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={emailSettings.notifyOnTaskAssigned}
+                    onChange={(e) => setEmailSettings({ ...emailSettings, notifyOnTaskAssigned: e.target.checked })}
+                    className="w-4 h-4 mt-1 text-emerald-600 rounded focus:ring-emerald-500"
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                      New Task Assignment Notification
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      Sends an email with full task requirements and deadline details whenever a new task is assigned.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="submit"
+                  disabled={isSavingEmail}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl font-semibold text-sm transition-all shadow-md shadow-emerald-950/20"
+                >
+                  {isSavingEmail ? 'Saving Settings...' : 'Save Email Configuration'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleTestEmail}
+                  disabled={isSendingEmailTest}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-800 dark:text-slate-200 rounded-xl font-semibold text-sm transition-all flex items-center gap-2"
+                >
+                  <Send className="w-4 h-4 text-emerald-600" />
+                  <span>{isSendingEmailTest ? 'Sending Test...' : 'Send Test Notification Email'}</span>
+                </button>
+              </div>
+
+              {emailTestResult && (
+                <div className={`p-4 rounded-xl text-xs font-semibold ${emailTestResult.success ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300'}`}>
+                  {emailTestResult.message}
+                </div>
+              )}
+            </form>
+          </div>
+
+          {/* Email Info Guide Card */}
+          <div className="space-y-6">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6 space-y-4">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Mail className="w-5 h-5 text-indigo-600" />
+                <span>How to Silence or Stop Emails</span>
+              </h3>
+
+              <div className="space-y-3 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                  <strong className="text-slate-900 dark:text-white block mb-1">1. Stop Workspace Admin Emails:</strong>
+                  Click <span className="text-rose-600 font-semibold">Remove My Email From Alerts</span> above, or switch the <strong>Master Switch</strong> off, then click <strong>Save Email Configuration</strong>.
+                </div>
+
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                  <strong className="text-slate-900 dark:text-white block mb-1">2. Stop Personal Task Emails:</strong>
+                  Go to <strong>Settings &rarr; Profile</strong> and toggle off <strong>Task & Deadline Email Notifications</strong>.
+                </div>
+
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                  <strong className="text-slate-900 dark:text-white block mb-1">3. Change Login Email:</strong>
+                  Go to <strong>Settings &rarr; Profile &rarr; Change Email Address</strong> to switch your account to an alternate or secondary email.
+                </div>
               </div>
             </div>
           </div>
