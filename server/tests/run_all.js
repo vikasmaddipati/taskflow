@@ -33,7 +33,7 @@ function runScript(scriptPath) {
 
 async function runAll() {
   console.log('\n============================================================');
-  console.log('   Executing Full TaskFlow Automated Verification Suite     ');
+  console.log('   Executing Full TaskMate Automated Verification Suite     ');
   console.log('============================================================\n');
 
   let persistentServer = null;
@@ -48,10 +48,11 @@ async function runAll() {
         env: { ...process.env, HOST: '127.0.0.1' }
       });
       persistentServer.stdout.on('data', () => {});
-      persistentServer.stderr.on('data', () => {});
+      let serverErr = '';
+      persistentServer.stderr.on('data', (d) => { serverErr += d.toString(); });
 
       let ready = false;
-      for (let i = 0; i < 25; i++) {
+      for (let i = 0; i < 50; i++) {
         await new Promise((r) => setTimeout(r, 500));
         if (await isServerRunning()) {
           ready = true;
@@ -59,7 +60,7 @@ async function runAll() {
         }
       }
       if (!ready) {
-        throw new Error('Could not connect to persistent background API server.');
+        throw new Error(`Could not connect to persistent background API server. ${serverErr}`);
       }
       console.log('[Runner Setup] Persistent server is running.\n');
     }
@@ -85,6 +86,16 @@ async function runAll() {
     await runScript('tests/production_deep_gaps.test.js');
     console.log('\n------------------------------------------------------------\n');
     await runScript('tests/ai.test.js');
+    console.log('\n------------------------------------------------------------\n');
+    await runScript('tests/whatsapp_integration.test.js');
+    console.log('\n------------------------------------------------------------\n');
+    await runScript('tests/email_integration.test.js');
+    console.log('\n------------------------------------------------------------\n');
+    await runScript('tests/google_auth_verification.test.js');
+    console.log('\n------------------------------------------------------------\n');
+    await runScript('tests/timezone.test.js');
+    console.log('\n------------------------------------------------------------\n');
+    await runScript('tests/admin_and_management_api.test.js');
 
     console.log('\n============================================================');
     console.log('   All Test Suites Completed Successfully (0 Errors)        ');

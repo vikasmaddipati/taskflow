@@ -67,6 +67,14 @@ const taskSchema = new mongoose.Schema(
       type: Date,
       default: null
     },
+    email30MinNotifiedAt: {
+      type: Date,
+      default: null
+    },
+    emailDueNotifiedAt: {
+      type: Date,
+      default: null
+    },
     recurrence: {
       isRecurring: {
         type: Boolean,

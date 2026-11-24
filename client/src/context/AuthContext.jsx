@@ -122,10 +122,12 @@ export const AuthProvider = ({ children }) => {
           localStorage.setItem('tm_org_id', active._id);
           await fetchWorkspaces(active._id);
         }
+        return res.data.organizations;
       }
     } catch (err) {
       console.warn('Could not load organizations:', err?.message);
     }
+    return [];
   }, [fetchWorkspaces]);
 
   // Load user profile on mount using session or stored tokens
@@ -383,13 +385,15 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Switch Active Organization
-  const switchOrganization = async (orgId) => {
+  const switchOrganization = async (orgOrId) => {
     try {
-      const target = organizations.find((o) => o._id === orgId);
+      const targetId = typeof orgOrId === 'object' && orgOrId?._id ? orgOrId._id : orgOrId;
+      const target = organizations.find((o) => o._id === targetId) || (typeof orgOrId === 'object' && orgOrId?._id ? orgOrId : null);
       if (target) {
         setCurrentOrg(target);
         localStorage.setItem('tm_org_id', target._id);
         await fetchWorkspaces(target._id);
+        window.dispatchEvent(new CustomEvent('org:changed', { detail: target }));
       }
     } catch (err) {
       console.error('Error switching organization:', err);
@@ -397,8 +401,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Switch Active Workspace
-  const switchWorkspace = (wsId) => {
-    const target = workspaces.find((w) => w._id === wsId);
+  const switchWorkspace = (wsOrId) => {
+    const targetId = typeof wsOrId === 'object' && wsOrId?._id ? wsOrId._id : wsOrId;
+    const target = workspaces.find((w) => w._id === targetId) || (typeof wsOrId === 'object' && wsOrId?._id ? wsOrId : null);
     if (target) {
       setCurrentWorkspace(target);
       localStorage.setItem('tm_workspace_id', target._id);
@@ -426,6 +431,7 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider
       value={{
         user,
+        setUser,
         loading,
         authError,
         setAuthError,

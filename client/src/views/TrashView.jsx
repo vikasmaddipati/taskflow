@@ -4,12 +4,9 @@ import {
   RotateCcw,
   AlertTriangle,
   Search,
-  Calendar,
   Tag,
   Clock,
-  User,
-  CheckCircle,
-  AlertCircle
+  User
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -194,7 +191,7 @@ export const TrashView = ({ showToast = () => {}, refreshTrigger = 0, onTaskRest
                 >
                   <div className="space-y-1.5 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-slate-900 dark:text-slate-100 text-base line-through text-slate-500 dark:text-slate-400">
+                      <span className="font-semibold text-base line-through text-slate-400 dark:text-slate-500 break-words">
                         {task.title}
                       </span>
                       {task.category && (

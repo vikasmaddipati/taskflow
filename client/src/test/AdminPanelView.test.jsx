@@ -6,7 +6,7 @@ import { AdminPanelView } from '../views/AdminPanelView';
 
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({
-    user: { _id: 'u1', name: 'Admin Boss', email: 'boss@taskflow.dev', phone: '+919999999999' },
+    user: { _id: 'u1', name: 'Admin Boss', email: 'boss@taskmate.dev', phone: '+919999999999' },
     currentOrg: { _id: 'org1', name: 'Acme Corp', plan: 'business' }
   })
 }));
@@ -33,7 +33,7 @@ vi.mock('../services/api', () => ({
                 {
                   userId: 'm1',
                   name: 'Alice Dev',
-                  email: 'alice@taskflow.dev',
+                  email: 'alice@taskmate.dev',
                   role: 'member',
                   assignedTasks: 10,
                   completedTasks: 6,
@@ -67,7 +67,7 @@ vi.mock('../services/api', () => ({
                 priority: 'high',
                 dueDateString: '2026-11-20',
                 dueTime: '17:30',
-                assignedTo: { name: 'Alice Dev', email: 'alice@taskflow.dev' },
+                assignedTo: { name: 'Alice Dev', email: 'alice@taskmate.dev' },
                 workspace: { name: 'DevOps' }
               }
             ]
@@ -89,7 +89,7 @@ describe('AdminPanelView Component', () => {
   it('renders admin header and top metrics KPIs', async () => {
     render(<AdminPanelView showToast={vi.fn()} onOpenCreateModal={vi.fn()} onEditTask={vi.fn()} />);
 
-    expect(screen.getByText('Admin & TaskFlow Monitor')).toBeInTheDocument();
+    expect(screen.getByText('Admin & TaskMate Monitor')).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('42')).toBeInTheDocument(); // total tasks

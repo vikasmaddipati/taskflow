@@ -38,7 +38,7 @@ describe('TaskIncomingCallModal Component', () => {
       />
     );
 
-    expect(screen.getByText('TaskFlow Automated Calling')).toBeInTheDocument();
+    expect(screen.getByText('TaskMate Automated Calling')).toBeInTheDocument();
     expect(screen.getByText('Incoming Deadline Phone Call')).toBeInTheDocument();
     expect(screen.getByText('Deploy Production Hotfix')).toBeInTheDocument();
     expect(screen.getByText('Answer')).toBeInTheDocument();

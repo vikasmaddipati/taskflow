@@ -2,32 +2,27 @@ import React, { useState, useEffect } from 'react';
 import {
   User,
   Shield,
-  Save,
   CheckCircle2,
   AlertCircle,
   Server,
   Building2,
   Plus,
   Smartphone,
-  LogOut,
-  Mail,
   Download,
   Trash2,
   AlertTriangle,
   FileText,
   Webhook,
   Send,
-  ExternalLink,
   PhoneCall,
-  Phone,
-  PhoneOutgoing
+  Phone
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getBaseURL } from '../services/api';
 import api from '../services/api';
 
 export const SettingsView = ({ showToast }) => {
-  const { user, updateProfile, fetchOrganizations, logout, currentOrg } = useAuth();
+  const { user, setUser, updateProfile, fetchOrganizations, logout, currentOrg } = useAuth();
 
   // Profile fields
   const [name, setName] = useState(user?.name || '');
@@ -36,6 +31,14 @@ export const SettingsView = ({ showToast }) => {
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isTestingCall, setIsTestingCall] = useState(false);
   const [profileMessage, setProfileMessage] = useState(null);
+
+  useEffect(() => {
+    if (user) {
+      if (user.name) setName(user.name);
+      if (user.phone !== undefined) setPhone(user.phone || '');
+      if (user.phoneAlertsEnabled !== undefined) setPhoneAlertsEnabled(user.phoneAlertsEnabled !== false);
+    }
+  }, [user]);
 
   // Email change state
   const [isChangingEmail, setIsChangingEmail] = useState(false);
@@ -124,9 +127,8 @@ export const SettingsView = ({ showToast }) => {
         setIsChangingEmail(false);
         setNewEmail('');
         setEmailPassword('');
-        if (res.data.user && user) {
-          user.email = res.data.user.email;
-          user.isEmailVerified = false;
+        if (res.data.user) {
+          setUser(res.data.user);
         }
       }
     } catch (err) {
@@ -152,12 +154,12 @@ export const SettingsView = ({ showToast }) => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `taskflow_tasks_export.${format}`);
+      link.setAttribute('download', `taskmate_tasks_export.${format}`);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
       showToast?.({ type: 'success', message: `Exported tasks as ${format.toUpperCase()}` });
-    } catch (err) {
+    } catch {
       showToast?.({ type: 'error', message: 'Failed to export data' });
     } finally {
       setIsExporting(false);
@@ -231,7 +233,7 @@ export const SettingsView = ({ showToast }) => {
     try {
       setIsTestingCall(true);
       const res = await api.post('/auth/test-phone-call', {
-        taskTitle: 'Urgent TaskFlow Deadline Verification'
+        taskTitle: 'Urgent TaskMate Deadline Verification'
       });
       if (res.data?.success) {
         showToast?.({ type: 'success', message: 'Incoming automated phone call alert triggered!' });
@@ -393,7 +395,7 @@ export const SettingsView = ({ showToast }) => {
       </div>
 
       {/* Profile Details Form */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-5">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 shadow-xs space-y-5">
         <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl">
             <User className="w-5 h-5" />
@@ -534,7 +536,7 @@ export const SettingsView = ({ showToast }) => {
               />
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-              TaskFlow places an automated voice phone call to this number whenever a task due date & time is completed.
+              TaskMate places an automated voice phone call to this number whenever a task due date & time is completed.
             </p>
           </div>
 
@@ -562,13 +564,13 @@ export const SettingsView = ({ showToast }) => {
               </label>
             </div>
 
-            <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
+            <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <span className="text-[11px] text-slate-500">Test your audio ringtone & voice caller:</span>
               <button
                 type="button"
                 onClick={handleTestPhoneCall}
                 disabled={isTestingCall}
-                className="px-3 py-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-lg border border-indigo-200 dark:border-indigo-800 flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-3 py-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-lg border border-indigo-200 dark:border-indigo-800 flex items-center justify-center gap-1.5 transition-all cursor-pointer w-full sm:w-auto"
               >
                 <PhoneCall className={`w-3.5 h-3.5 ${isTestingCall ? 'animate-bounce' : ''}`} />
                 {isTestingCall ? 'Calling...' : 'Test Incoming Phone Call'}
@@ -589,7 +591,7 @@ export const SettingsView = ({ showToast }) => {
       </div>
 
       {/* Organization Creation Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 shadow-xs space-y-4">
         <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div className="p-2.5 bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 rounded-xl">
             <Building2 className="w-5 h-5" />
@@ -620,7 +622,7 @@ export const SettingsView = ({ showToast }) => {
       </div>
 
       {/* Outgoing Webhooks & Integrations Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 shadow-xs space-y-4">
         <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl">
             <Webhook className="w-5 h-5" />
@@ -663,7 +665,7 @@ export const SettingsView = ({ showToast }) => {
             {webhooks.map((wh) => (
               <div
                 key={wh._id}
-                className="p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 flex items-center justify-between gap-3 text-xs flex-wrap"
+                className="p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between gap-3 text-xs flex-wrap"
               >
                 <div className="space-y-1 min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -704,8 +706,8 @@ export const SettingsView = ({ showToast }) => {
       </div>
 
       {/* Active Sessions & Device Security */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-xl">
               <Smartphone className="w-5 h-5" />
@@ -720,7 +722,7 @@ export const SettingsView = ({ showToast }) => {
             type="button"
             onClick={handleRevokeAllSessions}
             disabled={isRevokingAll}
-            className="px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900/60 transition-colors"
+            className="w-full sm:w-auto text-center px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900/60 transition-colors"
           >
             {isRevokingAll ? 'Revoking...' : 'Sign Out All Devices'}
           </button>
@@ -755,7 +757,7 @@ export const SettingsView = ({ showToast }) => {
       </div>
 
       {/* Security & Password Form */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-5">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 shadow-xs space-y-5">
         <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div className="p-2.5 bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-xl">
             <Shield className="w-5 h-5" />
@@ -831,7 +833,7 @@ export const SettingsView = ({ showToast }) => {
       </div>
 
       {/* Network API Configuration for Mobile Testing */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 shadow-xs space-y-4">
         <div className="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div className="p-2.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 rounded-xl">
             <Server className="w-5 h-5" />
@@ -856,13 +858,13 @@ export const SettingsView = ({ showToast }) => {
             />
           </div>
 
-          <div className="flex items-center justify-between pt-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
             <span className="text-[11px] text-slate-400">
               Android emulator: http://10.0.2.2:5000/api | Web: /api
             </span>
             <button
               type="submit"
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs transition-colors"
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs transition-colors text-center"
             >
               Save URL
             </button>
@@ -871,7 +873,7 @@ export const SettingsView = ({ showToast }) => {
       </div>
 
       {/* GDPR Article 20: Data Portability & Export */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 shadow-xs space-y-4">
         <div className="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl">
             <Download className="w-5 h-5" />
@@ -886,7 +888,7 @@ export const SettingsView = ({ showToast }) => {
           You can request a machine-readable archive of all your active tasks, priorities, tags, and timestamps anytime.
         </p>
 
-        <div className="flex items-center gap-3 pt-1">
+        <div className="flex flex-wrap items-center gap-3 pt-1">
           <button
             type="button"
             disabled={isExporting}
@@ -909,7 +911,7 @@ export const SettingsView = ({ showToast }) => {
       </div>
 
       {/* GDPR Article 17: Right to Erasure / Danger Zone */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-rose-200 dark:border-rose-900/40 p-6 shadow-xs space-y-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-rose-200 dark:border-rose-900/40 p-4 sm:p-6 shadow-xs space-y-4">
         <div className="flex items-center gap-3 pb-3 border-b border-rose-100 dark:border-rose-900/30">
           <div className="p-2.5 bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-xl">
             <Trash2 className="w-5 h-5" />

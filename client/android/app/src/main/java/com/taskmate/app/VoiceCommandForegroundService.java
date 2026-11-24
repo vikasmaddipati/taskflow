@@ -1,4 +1,4 @@
-package com.taskflow.app;
+package com.taskmate.app;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -50,26 +50,26 @@ import org.vosk.android.StorageService;
 
 public class VoiceCommandForegroundService extends Service implements RecognitionListener {
 
-    public static final String ACTION_START = "com.taskflow.app.VOICE_SERVICE_START";
-    public static final String ACTION_STOP = "com.taskflow.app.VOICE_SERVICE_STOP";
+    public static final String ACTION_START = "com.taskmate.app.VOICE_SERVICE_START";
+    public static final String ACTION_STOP = "com.taskmate.app.VOICE_SERVICE_STOP";
     public static final String EXTRA_LANGUAGE = "language";
 
-    public static final String BROADCAST_STATE = "com.taskflow.app.VOICE_STATE";
-    public static final String BROADCAST_PARTIAL = "com.taskflow.app.VOICE_PARTIAL";
-    public static final String BROADCAST_RESULT = "com.taskflow.app.VOICE_RESULT";
-    public static final String BROADCAST_RESPONSE = "com.taskflow.app.VOICE_RESPONSE";
-    public static final String BROADCAST_DATA_UPDATED = "com.taskflow.app.VOICE_DATA_UPDATED";
-    public static final String BROADCAST_UI_ACTION = "com.taskflow.app.VOICE_UI_ACTION";
-    public static final String BROADCAST_TOKENS_UPDATED = "com.taskflow.app.VOICE_TOKENS_UPDATED";
+    public static final String BROADCAST_STATE = "com.taskmate.app.VOICE_STATE";
+    public static final String BROADCAST_PARTIAL = "com.taskmate.app.VOICE_PARTIAL";
+    public static final String BROADCAST_RESULT = "com.taskmate.app.VOICE_RESULT";
+    public static final String BROADCAST_RESPONSE = "com.taskmate.app.VOICE_RESPONSE";
+    public static final String BROADCAST_DATA_UPDATED = "com.taskmate.app.VOICE_DATA_UPDATED";
+    public static final String BROADCAST_UI_ACTION = "com.taskmate.app.VOICE_UI_ACTION";
+    public static final String BROADCAST_TOKENS_UPDATED = "com.taskmate.app.VOICE_TOKENS_UPDATED";
 
-    private static final String CHANNEL_LISTENER = "taskflow_voice_listener";
-    private static final String CHANNEL_ALERTS = "taskflow_voice_alerts";
+    private static final String CHANNEL_LISTENER = "taskmate_voice_listener";
+    private static final String CHANNEL_ALERTS = "taskmate_voice_alerts";
     private static final int FOREGROUND_NOTIFICATION_ID = 4101;
     private static final int ALERT_NOTIFICATION_BASE_ID = 4200;
     private static final float SAMPLE_RATE = 16000.0f;
 
     private static final String WAKE_PHRASES =
-        "(?:task\\s*flow|taskflow|task\\s*flo|tasks\\s*flow|tasked\\s*flow|task\\s*low|task\\s*follow|task\\s*floor|task\\s*four|task\\s*for|task\\s*slow|task\\s*glow|task\\s*blow|task\\s*float|task\\s*flaw|task\\s*full|task\\s*show|task\\s*throw|task\\s*though|task\\s*below|task\\s*hello|task\\s*fellow|task\\s*go|task\\s*no|task\\s*off|ask\\s*flow|desk\\s*flow|test\\s*flow|tax\\s*flow|that\\s*flow|the\\s*flow|talk\\s*flow|touch\\s*flow|toss\\s*flow|top\\s*flow|fast\\s*flow|past\\s*flow|pass\\s*flow|last\\s*flow|tusk\\s*flow|tech\\s*flow|text\\s*flow|tack\\s*flow|take\\s*flow)";
+        "(?:mate|meat|task\\s*mate|taskmate|task\\s*meat|tasks\\s*mate|tasked\\s*mate|task\\s*late|task\\s*make|task\\s*main|task\\s*meet|task\\s*met|task\\s*date|task\\s*rate|task\\s*state|task\\s*weight|task\\s*eight|task\\s*bait|ask\\s*mate|desk\\s*mate|test\\s*mate|tax\\s*mate|that\\s*mate|the\\s*mate|talk\\s*mate|touch\\s*mate|toss\\s*mate|top\\s*mate|fast\\s*mate|past\\s*mate|pass\\s*mate|last\\s*mate|tusk\\s*mate|tech\\s*mate|text\\s*mate|tack\\s*mate|take\\s*mate|task\\s*flow|taskflow|task\\s*flo|tasks\\s*flow|tasked\\s*flow|task\\s*low|task\\s*follow|task\\s*floor|task\\s*four|task\\s*for|task\\s*slow|task\\s*glow|task\\s*blow|task\\s*float|task\\s*flaw|task\\s*full|task\\s*show|task\\s*throw|task\\s*though|task\\s*below|task\\s*hello|task\\s*fellow|task\\s*go|task\\s*no|task\\s*off|ask\\s*flow|desk\\s*flow|test\\s*flow|tax\\s*flow|that\\s*flow|the\\s*flow|talk\\s*flow|touch\\s*flow|toss\\s*flow|top\\s*flow|fast\\s*flow|past\\s*flow|pass\\s*flow|last\\s*flow|tusk\\s*flow|tech\\s*flow|text\\s*flow|tack\\s*flow|take\\s*flow)";
     private static final Pattern WAKE_PREFIX_PATTERN = Pattern.compile(
         "^(?:(?:hey|ok|okay|hi|hello)\\s+)?" + WAKE_PHRASES + "(?:\\s*[,.:;!?-]|\\s+(?:please|can you|could you)\\b)?\\s*",
         Pattern.CASE_INSENSITIVE
@@ -198,14 +198,14 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
                     emitBroadcast(BROADCAST_STATE, "state", "listening");
                 } catch (Exception e) {
                     emitBroadcast(BROADCAST_STATE, "state", "error", "message", "Could not start microphone stream: " + e.getMessage());
-                    postResultNotification("TaskFlow Voice Error", "Unable to start background microphone: " + e.getMessage());
+                    postResultNotification("TaskMate Voice Error", "Unable to start background microphone: " + e.getMessage());
                     stopSelfCleanly();
                 }
             },
             (exception) -> {
                 isInitializingModel = false;
                 emitBroadcast(BROADCAST_STATE, "state", "error", "message", "Failed to load voice model: " + exception.getMessage());
-                postResultNotification("TaskFlow Voice Error", "Failed to initialize voice model.");
+                postResultNotification("TaskMate Voice Error", "Failed to initialize voice model.");
                 stopSelfCleanly();
             }
         );
@@ -273,15 +273,15 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
 
             NotificationChannel listenerChannel = new NotificationChannel(
                 CHANNEL_LISTENER,
-                "TaskFlow Background Voice",
+                "TaskMate Background Voice",
                 NotificationManager.IMPORTANCE_LOW
             );
-            listenerChannel.setDescription("Keeps TaskFlow listening for \"Task Flow\" commands in the background.");
+            listenerChannel.setDescription("Keeps TaskMate listening for \"Mate\" commands in the background.");
             nm.createNotificationChannel(listenerChannel);
 
             NotificationChannel alertChannel = new NotificationChannel(
                 CHANNEL_ALERTS,
-                "TaskFlow Voice Confirmations",
+                "TaskMate Voice Confirmations",
                 NotificationManager.IMPORTANCE_HIGH
             );
             alertChannel.setDescription("Shows task creation and scheduling confirmations from voice commands.");
@@ -304,7 +304,7 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
 
         return new NotificationCompat.Builder(this, CHANNEL_LISTENER)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("TaskFlow Voice Active")
+            .setContentTitle("TaskMate Voice Active")
             .setContentText(contentText)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -644,11 +644,15 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
     }
 
     private static boolean isStrictFlowWord(String w) {
-        return levenshtein(w, "flow") <= 1 || "floe".equals(w) || "flo".equals(w);
+        return levenshtein(w, "mate") <= 1 || "meet".equals(w) || "meat".equals(w) || "met".equals(w) || "make".equals(w)
+            || levenshtein(w, "flow") <= 1 || "floe".equals(w) || "flo".equals(w);
     }
 
     private static boolean isBroadFlowWord(String w) {
         return isStrictFlowWord(w)
+            || levenshtein(w, "mate") <= 2
+            || "main".equals(w) || "late".equals(w) || "date".equals(w) || "rate".equals(w)
+            || "state".equals(w) || "eight".equals(w) || "weight".equals(w) || "bait".equals(w)
             || levenshtein(w, "flow") <= 2
             || "for".equals(w) || "four".equals(w) || "floor".equals(w) || "follow".equals(w)
             || "full".equals(w) || "show".equals(w) || "throw".equals(w) || "though".equals(w)
@@ -662,7 +666,10 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
         for (int i = 0; i < words.length; i++) {
             String w1 = words[i].toLowerCase(Locale.US).replaceAll("[^a-z]", "");
             if (w1.isEmpty()) continue;
-            if (w1.length() >= 6 && (levenshtein(w1, "taskflow") <= 2 || w1.startsWith("taskfl") || w1.startsWith("tasklo") || "taskfollow".equals(w1) || "taskfloor".equals(w1))) {
+            if ("mate".equals(w1) || "meat".equals(w1) || (w1.length() == 4 && levenshtein(w1, "mate") <= 1)) {
+                return joinFrom(words, i + 1);
+            }
+            if (w1.length() >= 6 && (levenshtein(w1, "taskmate") <= 2 || levenshtein(w1, "taskflow") <= 2 || w1.startsWith("taskma") || w1.startsWith("taskme") || w1.startsWith("taskfl") || w1.startsWith("tasklo") || "taskfollow".equals(w1) || "taskfloor".equals(w1))) {
                 return joinFrom(words, i + 1);
             }
             if (i + 1 < words.length) {
@@ -777,7 +784,7 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
             isProcessing = false;
 
             if (outcome.stopService) {
-                postResultNotification("TaskFlow Voice Stopped", outcome.speech);
+                postResultNotification("TaskMate Voice Stopped", outcome.speech);
                 speakAloud(outcome.speech);
                 mainHandler.postDelayed(this::stopSelfCleanly, 2200L);
                 return;
@@ -924,30 +931,30 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
         String lower = command.toLowerCase(Locale.US).trim();
 
         if (lower.matches("^(stop listening|pause listening|mute voice|go to sleep|sleep|never mind|cancel)$")) {
-            return new CommandOutcome("TaskFlow Voice", "Okay, pausing background voice assistant.", false, true);
+            return new CommandOutcome("TaskMate Voice", "Okay, pausing background voice assistant.", false, true);
         }
 
         if (lower.matches("^(thank you|thanks|thanks a lot|awesome|great job|good job|bye|goodbye|see you|that's all)$")) {
-            return new CommandOutcome("TaskFlow", "You're welcome! Just say Task Flow whenever you need me.", false, false);
+            return new CommandOutcome("TaskMate", "You're welcome! Just say Mate whenever you need me.", false, false);
         }
 
         if (lower.matches("^(good morning|good afternoon|good evening|hi|hello|hey there|hey)$")) {
             int hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
             String greet = hour < 12 ? "Good morning!" : (hour < 17 ? "Good afternoon!" : "Good evening!");
-            return new CommandOutcome("TaskFlow", greet + " I'm ready to help with your tasks. What would you like to do?", false, false, true, null);
+            return new CommandOutcome("TaskMate", greet + " I'm ready to help with your tasks. What would you like to do?", false, false, true, null);
         }
 
         if (lower.matches("^(how are you|how are you doing|how's it going|what's up)\\??$")) {
-            return new CommandOutcome("TaskFlow", "I'm doing great and ready to keep your day organized! How can I help?", false, false, true, null);
+            return new CommandOutcome("TaskMate", "I'm doing great and ready to keep your day organized! How can I help?", false, false, true, null);
         }
 
         if (lower.matches("^(who are you|what is your name|what's your name)\\??$")) {
-            return new CommandOutcome("TaskFlow", "I'm TaskFlow, your personal voice assistant. Tell me to schedule tasks or check your day.", false, false, true, null);
+            return new CommandOutcome("TaskMate", "I'm TaskMate, your personal voice assistant. Tell me to schedule tasks or check your day.", false, false, true, null);
         }
 
-        if (lower.matches("^(open app|open taskflow)$")) {
+        if (lower.matches("^(open app|open taskmate|open taskflow)$")) {
             bringAppToFront();
-            return new CommandOutcome("TaskFlow Opened", "Sure, opening TaskFlow.", false, false);
+            return new CommandOutcome("TaskMate Opened", "Sure, opening TaskMate.", false, false);
         }
 
         if (lower.matches("^(?:open|show)\\s+(?:ai\\s+)?copilot$")) {
@@ -989,7 +996,7 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
         if (token == null || token.isEmpty()) {
             return new CommandOutcome(
                 "Sign In Required",
-                "Please sign in to TaskFlow first so I can access your tasks.",
+                "Please sign in to TaskMate first so I can access your tasks.",
                 false,
                 false
             );
@@ -1498,9 +1505,9 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
             if (chatRes.optJSONObject("task") != null) {
                 lastReferencedTask = chatRes.optJSONObject("task");
             }
-            return new CommandOutcome("TaskFlow Assistant", reply, mutated, false);
+            return new CommandOutcome("TaskMate Assistant", reply, mutated, false);
         } catch (Exception e) {
-            return new CommandOutcome("TaskFlow Voice Error", e.getMessage() != null ? e.getMessage() : "Sorry, I couldn't complete that command.", false, false);
+            return new CommandOutcome("TaskMate Voice Error", e.getMessage() != null ? e.getMessage() : "Sorry, I couldn't complete that command.", false, false);
         }
     }
 
@@ -1617,7 +1624,7 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
         JSONObject payload = new JSONObject();
         try {
             payload.put("title", title);
-            payload.put("description", "Created via TaskFlow Background Voice: \"" + command + "\"");
+            payload.put("description", "Created via TaskMate Background Voice: \"" + command + "\"");
             payload.put("priority", priority);
             payload.put("category", "General");
             if (hasDate) {
@@ -1674,7 +1681,7 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
     private CommandOutcome advanceTaskConversationInBackground(String rawReply) throws Exception {
         TaskDraft draft = activeDraft;
         if (draft == null) {
-            return new CommandOutcome("TaskFlow", "Let's start over. What task would you like to create?", false, false, true, null);
+            return new CommandOutcome("TaskMate", "Let's start over. What task would you like to create?", false, false, true, null);
         }
 
         String trimmed = rawReply == null ? "" : rawReply.trim();
@@ -1807,7 +1814,7 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
                         payload.put("title", draft.title);
                         String desc = !draft.customDescription.isEmpty()
                             ? draft.customDescription
-                            : ("Created via TaskFlow Background Voice" + (!draft.dueTime.isEmpty() ? (" (" + draft.dueTime + ")") : ""));
+                            : ("Created via TaskMate Background Voice" + (!draft.dueTime.isEmpty() ? (" (" + draft.dueTime + ")") : ""));
                         payload.put("description", desc);
                         payload.put("priority", draft.hasPriority ? draft.priority : "medium");
                         payload.put("category", draft.category);
@@ -1864,7 +1871,7 @@ public class VoiceCommandForegroundService extends Service implements Recognitio
 
             default:
                 activeDraft = null;
-                return new CommandOutcome("TaskFlow", "Let's start over. What task would you like to create?", false, false, true, null);
+                return new CommandOutcome("TaskMate", "Let's start over. What task would you like to create?", false, false, true, null);
         }
     }
 

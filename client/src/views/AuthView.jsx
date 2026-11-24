@@ -261,7 +261,7 @@ export const AuthView = () => {
   };
 
   const fillDemoAccount = () => {
-    setEmail('demo@taskflow.dev');
+    setEmail('demo@taskmate.dev');
     setPassword('demopass123');
     if (mode === 'register') {
       setName('Alex Rivera');
@@ -280,7 +280,7 @@ export const AuthView = () => {
             <Sparkles className="w-6 h-6 fill-white" />
           </div>
           <h1 className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
-            TaskFlow
+            TaskMate
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
             Productivity workspace with secure authentication
@@ -331,7 +331,7 @@ export const AuthView = () => {
               )}
               {(displayError.toLowerCase().includes('database') || displayError.includes('MONGODB_URI')) && (
                 <div className="mt-1 p-2 bg-amber-100/60 dark:bg-amber-900/40 border border-amber-200/60 dark:border-amber-800/40 rounded-lg text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
-                  <strong>Database Setup Required:</strong> To enable account creation and data storage on your cPanel domain, add your free <strong>MongoDB Atlas</strong> connection string to <code className="font-mono bg-white/60 dark:bg-black/30 px-1 py-0.5 rounded">/home/taskflow/taskflow/.env</code> as <code className="font-mono bg-white/60 dark:bg-black/30 px-1 py-0.5 rounded">MONGODB_URI=mongodb+srv://...</code>.
+                  <strong>Database Setup Required:</strong> To enable account creation and data storage on your cPanel domain, add your free <strong>MongoDB Atlas</strong> connection string to <code className="font-mono bg-white/60 dark:bg-black/30 px-1 py-0.5 rounded">.env</code> as <code className="font-mono bg-white/60 dark:bg-black/30 px-1 py-0.5 rounded">MONGODB_URI=mongodb+srv://...</code>.
                 </div>
               )}
             </div>

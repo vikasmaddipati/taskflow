@@ -1,5 +1,5 @@
-# COMPLETE FORENSIC PRODUCT & ARCHITECTURAL AUDIT REPORT: TASKFLOW
-**Application Under Audit:** TaskFlow MERN Stack & Capacitor Android Application  
+# COMPLETE FORENSIC PRODUCT & ARCHITECTURAL AUDIT REPORT: TASKMATE
+**Application Under Audit:** TaskMate MERN Stack & Capacitor Android Application  
 **Repository Path:** `c:\Users\vikas\OneDrive\Desktop\TaskMang`  
 **Audit Date:** October 28, 2026  
 **Auditor Roles Represented Simultaneously:**
@@ -24,7 +24,7 @@
 ### "Is this application a complete, functional, production-ready SaaS product, or does it only LOOK complete?"
 
 > ### FINAL VERDICT: IT ONLY LOOKS COMPLETE.
-> TaskFlow presents an exceptionally polished visual facade—modern dark/light mode styling, responsive drawer navigation, clean metrics cards, smooth modals, and animated progress bars. 
+> TaskMate presents an exceptionally polished visual facade—modern dark/light mode styling, responsive drawer navigation, clean metrics cards, smooth modals, and animated progress bars. 
 > 
 > However, beneath this visual surface, **it is a single-user prototype**, **NOT a production-ready SaaS platform**. 
 > 
@@ -45,7 +45,7 @@
 |---|---|---|---|
 | **Multi-Tenancy** | "Workspace Overview" banner on Dashboard | No Organizations, Tenants, Teams, Roles, or Invites exist in database or code. | ❌ **VOID** |
 | **SaaS Subscriptions** | Described as a "Modern SaaS Productivity Tool" | Zero billing code. No Stripe, plans, limits, invoices, or upgrade workflows. | ❌ **VOID** |
-| **Mobile App (APK)** | Pre-compiled native Android package (`TaskFlow.apk`) | Hardcoded to private LAN IP (`192.168.1.15`). Fails with network error anywhere else. | 🚨 **FATAL DEFECT** |
+| **Mobile App (APK)** | Pre-compiled native Android package (`TaskMate.apk`) | Hardcoded to private LAN IP (`192.168.1.15`). Fails with network error anywhere else. | 🚨 **FATAL DEFECT** |
 | **Notification Toast** | Toast renders on action | `Toast.jsx` violates React Rules of Hooks (conditional `useEffect` after early return). Crashes runtime. | 🚨 **FATAL BUG** |
 | **Session Lifecycle** | "Log out" button in navbar | Deletes token only in `localStorage`. JWT remains 100% active on backend for 7 days. No revocation. | 🚨 **SECURITY RISK** |
 | **User Sign-Up** | Email validation enforced | Email regex rejects all valid modern TLDs with >3 letters (`.cloud`, `.online`, `.tech`). | 🚨 **CORE DEFECT** |
@@ -77,7 +77,7 @@ In any legitimate SaaS platform, the foundational unit is a **Tenant** or **Orga
 - Users cannot share tasks, assign tasks to colleagues, delegate action items, or collaborate on projects.
 
 ### 2.3 Single-Player Trap
-TaskFlow is marketed in documentation as a "Modern Productivity Application", but from an enterprise/SaaS standpoint, it operates strictly as an isolated single-player sandbox.
+TaskMate is marketed in documentation as a "Modern Productivity Application", but from an enterprise/SaaS standpoint, it operates strictly as an isolated single-player sandbox.
 
 ---
 
@@ -223,7 +223,7 @@ A SaaS business cannot operate without billing workflows. In this codebase:
 
 ### 6.1 No API Versioning
 - All endpoints are bound to `/api/auth` and `/api/tasks`.
-- There is no `/api/v1` namespace. Any modification to response schemas (such as adding pagination objects) will instantly break deployed mobile clients ([`TaskFlow.apk`](file:///c:/Users/vikas/OneDrive/Desktop/TaskMang/TaskFlow.apk)).
+- There is no `/api/v1` namespace. Any modification to response schemas (such as adding pagination objects) will instantly break deployed mobile clients ([`TaskMate.apk`](file:///c:/Users/vikas/OneDrive/Desktop/TaskMang/TaskMate.apk)).
 
 ### 6.2 Missing Schema Validation Middleware & NoSQL Injection Exposure
 - The backend does not use schema validation engines (e.g., Zod, Joi, or express-validator).
@@ -308,7 +308,7 @@ A SaaS business cannot operate without billing workflows. In this codebase:
     return 'http://192.168.1.15:5000/api';
   }
   ```
-- **Finding:** When running as a native Android app ([`TaskFlow.apk`](file:///c:/Users/vikas/OneDrive/Desktop/TaskMang/TaskFlow.apk)), API requests are hardcoded to `http://192.168.1.15:5000/api`.
+- **Finding:** When running as a native Android app ([`TaskMate.apk`](file:///c:/Users/vikas/OneDrive/Desktop/TaskMang/TaskMate.apk)), API requests are hardcoded to `http://192.168.1.15:5000/api`.
 - **Impact:** Any user outside the original developer's home Wi-Fi network who installs the APK will see infinite loading spinners and `ERR_CONNECTION_REFUSED`. The mobile app is completely inoperable for the public.
 
 ### 7.5 Complete Absence of Client-Side URL Routing
@@ -317,7 +317,7 @@ A SaaS business cannot operate without billing workflows. In this codebase:
 - **Broken End-to-End Workflows:**
   - **Browser Refresh:** If a user is organizing tasks in "Upcoming" or editing "Settings" and hits browser refresh, the app abruptly redirects them back to "Dashboard".
   - **Browser Back / Forward Buttons:** Clicking the browser back button (`←`) exits the application or goes to a completely different website rather than navigating between views.
-  - **Zero Deep Linking:** It is impossible to send a teammate or bookmark a URL to a specific task, filter, or view (e.g. `taskflow.com/tasks/my-day`).
+  - **Zero Deep Linking:** It is impossible to send a teammate or bookmark a URL to a specific task, filter, or view (e.g. `taskmate.com/tasks/my-day`).
 
 ### 7.6 Asynchronous Race Conditions in Task Fetching
 - **Location:** [`client/src/views/AllTasksView.jsx`](file:///c:/Users/vikas/OneDrive/Desktop/TaskMang/client/src/views/AllTasksView.jsx#L54-L61)

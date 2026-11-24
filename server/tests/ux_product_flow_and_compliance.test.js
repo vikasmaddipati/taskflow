@@ -1,4 +1,4 @@
-// TaskFlow — UX, Product Flow & Compliance Verification Suite (Audit Section 7)
+// TaskMate — UX, Product Flow & Compliance Verification Suite (Audit Section 7)
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -43,7 +43,7 @@ async function request(endpoint, options = {}) {
 
 async function runComplianceAndUxTests() {
   console.log('================================================================');
-  console.log('   TaskFlow UX, Product Flow & Compliance Verification (Sec 7)  ');
+  console.log('   TaskMate UX, Product Flow & Compliance Verification (Sec 7)  ');
   console.log('================================================================\n');
 
   let passed = 0;
@@ -180,7 +180,7 @@ async function runComplianceAndUxTests() {
     });
     assert(jsonExport.status === 200, 'JSON task export returns HTTP 200 OK');
     const jsonDisposition = jsonExport.headers.get('content-disposition') || '';
-    assert(jsonDisposition.includes('filename="taskflow_tasks_export.json"'), 'JSON export specifies attachment disposition filename');
+    assert(jsonDisposition.includes('filename="taskmate_tasks_export.json"'), 'JSON export specifies attachment disposition filename');
     assert(Array.isArray(jsonExport.data?.tasks) && jsonExport.data.tasks.length >= 2, 'Exported JSON contains array of all user tasks');
     assert(jsonExport.data.tasks[0]?.title && jsonExport.data.tasks[0]?.priority, 'Exported tasks contain structured attributes');
 
@@ -191,7 +191,7 @@ async function runComplianceAndUxTests() {
     });
     assert(csvExport.status === 200, 'CSV task export returns HTTP 200 OK');
     const csvDisposition = csvExport.headers.get('content-disposition') || '';
-    assert(csvDisposition.includes('filename="taskflow_tasks_export.csv"'), 'CSV export specifies attachment disposition filename');
+    assert(csvDisposition.includes('filename="taskmate_tasks_export.csv"'), 'CSV export specifies attachment disposition filename');
     assert(typeof csvExport.data === 'string' && csvExport.data.includes('Title,Description,Priority,Status,Category'), 'CSV export contains CSV header row');
     assert(csvExport.data.includes('Task Alpha (Portability Test)'), 'CSV export contains task data row');
 

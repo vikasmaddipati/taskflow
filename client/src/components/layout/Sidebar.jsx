@@ -113,7 +113,7 @@ export const Sidebar = ({
             <Sparkles className="w-4 h-4 fill-white" />
           </div>
           <div>
-            <span className="font-bold text-base text-white tracking-tight">TaskFlow</span>
+            <span className="font-bold text-base text-white tracking-tight">TaskMate</span>
             <span className="text-[10px] text-indigo-400 font-semibold block leading-none">SaaS Platform</span>
           </div>
         </div>
@@ -173,7 +173,7 @@ export const Sidebar = ({
       </div>
 
       {/* Quick Status Footer */}
-      <div className="p-4 border-t border-slate-800 m-3 rounded-2xl bg-slate-850/60">
+      <div className="p-4 border border-slate-800/80 m-3 rounded-2xl bg-slate-800/60">
         <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
           <span>Overall Progress</span>
           <span className="font-semibold text-slate-200">

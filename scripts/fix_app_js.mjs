@@ -3,7 +3,7 @@ import https from 'https';
 const basicAuth = Buffer.from('taskflow:jzD;WpIW1c1[19').toString('base64');
 
 const appJsContent = `/**
- * TaskFlow - cPanel Phusion Passenger Startup Entrypoint
+ * TaskMate - cPanel Phusion Passenger Startup Entrypoint
  */
 import './src/server.js';
 `;

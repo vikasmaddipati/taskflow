@@ -31,7 +31,7 @@ Copy-Item -Path "$root\server\src\*" -Destination "$staging\src" -Recurse
 Write-Host "Adding Passenger root entrypoints..."
 $appJs = @"
 /**
- * TaskFlow - cPanel Phusion Passenger Startup Entrypoint
+ * TaskMate - cPanel Phusion Passenger Startup Entrypoint
  */
 import './src/server.js';
 "@

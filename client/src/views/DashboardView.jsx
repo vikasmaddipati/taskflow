@@ -6,13 +6,11 @@ import {
   Calendar,
   Layers,
   ArrowRight,
-  TrendingUp,
   Plus,
   Sparkles
 } from 'lucide-react';
 import api from '../services/api';
 import { TaskItem } from '../components/tasks/TaskItem';
-import { EmptyState } from '../components/common/EmptyState';
 
 export const DashboardView = ({
   onNavigate,
@@ -66,7 +64,7 @@ export const DashboardView = ({
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-3 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
+        <div className="w-8 h-8 border-[3px] border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
         <span className="mt-3 text-sm text-slate-500">Loading your dashboard...</span>
       </div>
     );
@@ -188,7 +186,7 @@ export const DashboardView = ({
         </div>
 
         {/* Overdue Tasks */}
-        <div className="col-span-2 sm:col-span-1 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div className="col-span-2 lg:col-span-1 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-slate-400 mb-3">
             <span className="text-xs font-semibold uppercase tracking-wider">Overdue</span>
             <div className="p-2 bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-xl">

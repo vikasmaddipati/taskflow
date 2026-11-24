@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, CheckSquare, Check, Play, Trash2, X, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Check, Play, Trash2, X } from 'lucide-react';
 import { TaskFilters } from '../components/tasks/TaskFilters';
 import { TaskItem } from '../components/tasks/TaskItem';
 import { EmptyState } from '../components/common/EmptyState';
@@ -16,6 +16,7 @@ export const AllTasksView = ({
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Bulk selection state
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
@@ -65,7 +66,7 @@ export const AllTasksView = ({
 
         if (res.data.success) {
           setTasks(res.data.items || res.data.tasks || []);
-          setTotal(res.data.totalItems ?? res.data.total ?? res.data.tasks.length);
+          setTotal(res.data.totalItems ?? res.data.total ?? (res.data.tasks?.length ?? 0));
           setTotalPages(res.data.totalPages ?? 1);
           if (res.data.categories) {
             setCategories(res.data.categories);
@@ -87,7 +88,7 @@ export const AllTasksView = ({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [search, statusFilter, priorityFilter, categoryFilter, sortBy, sortOrder, page, refreshTrigger]);
+  }, [search, statusFilter, priorityFilter, categoryFilter, sortBy, sortOrder, page, limit, refreshTrigger, retryCount]);
 
   // Bulk selection handlers
   const handleToggleSelect = (taskId) => {
@@ -133,7 +134,7 @@ export const AllTasksView = ({
         const refetch = await api.get(`/tasks?${params.toString()}`);
         if (refetch.data.success) {
           setTasks(refetch.data.items || refetch.data.tasks || []);
-          setTotal(refetch.data.totalItems ?? refetch.data.total ?? refetch.data.tasks.length);
+          setTotal(refetch.data.totalItems ?? refetch.data.total ?? (refetch.data.tasks?.length ?? 0));
         }
       }
     } catch (err) {
@@ -249,15 +250,15 @@ export const AllTasksView = ({
       {/* Task List or States */}
       {loading ? (
         <div className="flex flex-col items-center justify-center p-12">
-          <div className="w-8 h-8 border-3 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
+          <div className="w-8 h-8 border-[3px] border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
           <span className="mt-3 text-xs text-slate-500">Loading tasks...</span>
         </div>
       ) : error ? (
         <div className="p-6 bg-rose-50 dark:bg-rose-950/40 rounded-2xl border border-rose-200 text-center">
           <p className="text-sm font-medium text-rose-600 dark:text-rose-400">{error}</p>
           <button
-            onClick={fetchTasks}
-            className="mt-3 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-semibold"
+            onClick={() => setRetryCount((c) => c + 1)}
+            className="mt-3 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-semibold cursor-pointer"
           >
             Retry
           </button>

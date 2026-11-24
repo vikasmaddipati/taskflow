@@ -106,6 +106,7 @@ export const Navbar = ({
 
   const viewTitles = {
     dashboard: 'Dashboard Overview',
+    admin: 'Admin & TaskMate Monitor',
     ai: 'AI Assistant & Scheduler',
     all: 'All Tasks',
     board: 'Kanban Board',
@@ -146,7 +147,7 @@ export const Navbar = ({
               setIsWsDropdownOpen(false);
               setIsNotifOpen(false);
             }}
-            className="flex items-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 transition-colors text-xs font-semibold text-slate-800 dark:text-slate-200 max-w-full min-w-0 overflow-hidden"
+            className="flex items-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-xs font-semibold text-slate-800 dark:text-slate-200 max-w-full min-w-0 overflow-hidden"
           >
             <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
             <span className="min-w-0 max-w-[75px] sm:max-w-[150px] truncate">
@@ -224,7 +225,7 @@ export const Navbar = ({
               setIsOrgDropdownOpen(false);
               setIsNotifOpen(false);
             }}
-            className="flex items-center gap-1 sm:gap-2 px-1.5 sm:px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 transition-colors text-xs font-semibold text-slate-700 dark:text-slate-300 max-w-full min-w-0 overflow-hidden"
+            className="flex items-center gap-1 sm:gap-2 px-1.5 sm:px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-xs font-semibold text-slate-700 dark:text-slate-300 max-w-full min-w-0 overflow-hidden"
           >
             <Layers className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
             <span className="min-w-0 max-w-[70px] sm:max-w-[130px] truncate">

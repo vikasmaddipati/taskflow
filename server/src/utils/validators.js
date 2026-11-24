@@ -47,3 +47,13 @@ export const normalizeEmail = (email) => {
   if (!email || typeof email !== 'string') return '';
   return email.trim().toLowerCase();
 };
+
+/**
+ * Escapes special regex characters in search strings to prevent regex syntax errors or injection
+ * @param {string} str
+ * @returns {string}
+ */
+export const escapeRegex = (str) => {
+  if (typeof str !== 'string') return '';
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};

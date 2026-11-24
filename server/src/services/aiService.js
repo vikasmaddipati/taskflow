@@ -3,6 +3,7 @@ import Category from '../models/Category.js';
 import { getTimezoneDayBoundaries, getValidTimezone, normalizeDueDate } from '../utils/timezone.js';
 import { recordUsage, checkQuota } from './entitlementService.js';
 import { broadcastTenantEvent } from './realtimeService.js';
+import { escapeRegex } from '../utils/validators.js';
 
 /**
  * Natural language relative date & time parser.
@@ -226,7 +227,7 @@ export const parseTaskSchedulePrompt = (prompt, clientTimezone = 'UTC') => {
 
   return {
     title,
-    description: `Auto-scheduled via TaskFlow AI from: "${cleanPrompt}"`,
+    description: `Auto-scheduled via TaskMate AI from: "${cleanPrompt}"`,
     priority,
     category,
     dueDate: parsedTime ? parsedTime.date : null,
@@ -641,7 +642,7 @@ export const processAiAssistantMessage = async ({
       organization: orgId,
       isDeleted: false,
       status: { $ne: 'completed' },
-      title: { $regex: new RegExp(searchTitle, 'i') }
+      title: { $regex: new RegExp(escapeRegex(searchTitle), 'i') }
     });
 
     if (task) {
@@ -671,7 +672,7 @@ export const processAiAssistantMessage = async ({
 
   // 6. DEFAULT / GENERAL AI PRODUCTIVITY ASSISTANT
   // If user greets or asks general question
-  const greeting = `👋 Hello ${user.name || 'there'}! I am **TaskFlow AI**, your intelligent task manager & scheduling assistant.\n\n` +
+  const greeting = `👋 Hello ${user.name || 'there'}! I am **TaskMate AI**, your intelligent task manager & scheduling assistant.\n\n` +
     `Here is what I can do for you:\n` +
     `- **Natural Language Scheduling**: Type *"Schedule client demo next Thursday at 2pm high priority"*\n` +
     `- **Smart Daily Planning**: Ask *"Plan my day"* or *"Optimize my schedule"*\n` +

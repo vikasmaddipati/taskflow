@@ -6,7 +6,6 @@ import {
   Volume2,
   VolumeX,
   X,
-  AlertTriangle,
   RotateCcw,
   Sparkles
 } from 'lucide-react';

@@ -29,7 +29,7 @@ describe('VoiceAssistantHUD Component', () => {
       />
     );
 
-    expect(screen.getByText('Say "Task Flow" + command...')).toBeInTheDocument();
+    expect(screen.getByText('Say "Mate" + command...')).toBeInTheDocument();
     expect(screen.getByText('Task Flow create task')).toBeInTheDocument();
     expect(screen.getByText('Task is created: Buy milk.')).toBeInTheDocument();
 
@@ -64,11 +64,11 @@ describe('VoiceAssistantHUD Component', () => {
       />
     );
 
-    const exampleBtn = screen.getByText(/Task Flow, schedule a task name PYTHON/i);
+    const exampleBtn = screen.getByText(/Mate, schedule a task name PYTHON/i);
     await user.click(exampleBtn);
 
     expect(onRunExampleCommand).toHaveBeenCalledWith(
-      'Task Flow, schedule a task name PYTHON'
+      'Mate, schedule a task name PYTHON'
     );
     expect(onCloseHelp).toHaveBeenCalledTimes(1);
   });

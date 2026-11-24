@@ -1,4 +1,4 @@
-package com.taskflow.app;
+package com.taskmate.app;
 
 import android.os.Bundle;
 import android.webkit.CookieManager;
@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(VoiceBridgePlugin.class);
+        registerPlugin(GoogleNativeAuthPlugin.class);
         super.onCreate(savedInstanceState);
         try {
             CookieManager cookieManager = CookieManager.getInstance();

@@ -2,21 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   CreditCard,
   Check,
-  Sparkles,
   Zap,
-  Shield,
-  ExternalLink,
   ArrowRight,
   AlertTriangle,
-  Calendar,
   Download,
   RefreshCw,
   FileText,
   Lock,
-  Layers,
-  Users,
   CheckCircle2,
-  XCircle,
   Clock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -127,7 +120,7 @@ export const BillingView = ({ showToast }) => {
         if (verifyRes.data.success) {
           showToast?.({
             type: 'success',
-            message: `Upgraded to ${planId.toUpperCase()} tier successfully (Test Simulation)!`
+            message: `Upgraded to ${planId.toUpperCase()} tier successfully!`
           });
           await fetchBillingData();
           await fetchOrganizations();
@@ -148,7 +141,7 @@ export const BillingView = ({ showToast }) => {
       const options = {
         key: checkoutData.keyId,
         subscription_id: checkoutData.subscriptionId,
-        name: 'TaskFlow Cloud',
+        name: 'TaskMate Cloud',
         description: `Upgrade to ${planId.toUpperCase()} Subscription`,
         prefill: {
           name: checkoutData.customer?.name,
@@ -192,6 +185,13 @@ export const BillingView = ({ showToast }) => {
       };
 
       const rzpInstance = new window.Razorpay(options);
+      rzpInstance.on('payment.failed', function (response) {
+        setUpgradingPlan(null);
+        showToast?.({
+          type: 'error',
+          message: response.error?.description || 'Payment was declined or cancelled.'
+        });
+      });
       rzpInstance.open();
     } catch (err) {
       showToast?.({
@@ -275,6 +275,15 @@ export const BillingView = ({ showToast }) => {
     });
   };
 
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
+        <div className="w-8 h-8 border-[3px] border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
+        <span className="mt-3 text-sm text-slate-500">Loading subscription and billing data...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8 animate-in fade-in duration-200 pb-12">
       {/* Top Header Banner */}
@@ -287,7 +296,7 @@ export const BillingView = ({ showToast }) => {
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-slate-100 mt-1">
             Billing & Plans — {currentOrg?.name || 'Organization'}
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 flex flex-wrap items-center gap-2">
             <span>Current Tier:</span>
             <span className="font-extrabold uppercase px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
               {currentPlanId}
@@ -471,7 +480,6 @@ export const BillingView = ({ showToast }) => {
           {plans.map((p) => {
             const isCurrent = currentPlanId === p.id;
             const isPopular = p.id === 'team';
-            const isPro = p.id === 'pro';
 
             return (
               <div
@@ -514,23 +522,23 @@ export const BillingView = ({ showToast }) => {
                   <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
                     <li className="flex items-center gap-2">
                       <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span><strong>{p.limits?.maxTasksPerMonth?.toLocaleString()}</strong> tasks/mo</span>
+                      <span><strong>{p.limits?.maxTasksPerMonth != null ? p.limits.maxTasksPerMonth.toLocaleString() : 'Unlimited'}</strong> tasks/mo</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span><strong>{p.limits?.maxMembers}</strong> members</span>
+                      <span><strong>{p.limits?.maxMembers ?? 'Unlimited'}</strong> members</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span><strong>{p.limits?.maxWorkspaces}</strong> workspaces</span>
+                      <span><strong>{p.limits?.maxWorkspaces ?? 'Unlimited'}</strong> workspaces</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span><strong>{p.limits?.storageMb >= 1000 ? `${p.limits.storageMb / 1000}GB` : `${p.limits.storageMb}MB`}</strong> storage</span>
+                      <span><strong>{p.limits?.storageMb != null ? (p.limits.storageMb >= 1000 ? `${p.limits.storageMb / 1000}GB` : `${p.limits.storageMb}MB`) : 'Unlimited'}</strong> storage</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span><strong>{p.limits?.maxExportsPerMonth}</strong> exports/mo</span>
+                      <span><strong>{p.limits?.maxExportsPerMonth ?? 'Unlimited'}</strong> exports/mo</span>
                     </li>
                   </ul>
 
@@ -595,7 +603,7 @@ export const BillingView = ({ showToast }) => {
                     <button
                       onClick={() => handleUpgrade(p.id)}
                       disabled={upgradingPlan === p.id || !isBillingAdmin}
-                      className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 active:scale-98 disabled:opacity-50"
+                      className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
                     >
                       {upgradingPlan === p.id ? (
                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

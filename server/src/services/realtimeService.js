@@ -13,9 +13,23 @@ sseEmitter.setMaxListeners(2000);
 export const broadcastTenantEvent = (organizationId, eventType, payload = {}) => {
   if (!organizationId) return;
   const channel = `tenant:${organizationId.toString()}`;
+
+  let type = eventType;
+  let data = payload;
+
+  // Handle both signatures:
+  // 1. broadcastTenantEvent(orgId, 'event.type', payload)
+  // 2. broadcastTenantEvent(orgId, { type: 'event.type', ...data })
+  if (typeof eventType === 'object' && eventType !== null) {
+    type = eventType.type || 'event';
+    const { type: _, ...rest } = eventType;
+    data = { ...rest, ...payload };
+  }
+
   sseEmitter.emit(channel, {
-    type: eventType,
-    payload,
+    type,
+    payload: data,
+    ...data,
     timestamp: new Date().toISOString()
   });
 };

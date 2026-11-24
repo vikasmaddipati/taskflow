@@ -44,7 +44,7 @@ export const VoiceAssistantHUD = ({
         <div
           className="fixed left-3 right-3 sm:left-auto sm:right-24 sm:w-96 z-40 bottom-[calc(5.25rem+var(--app-safe-bottom))] sm:bottom-[calc(1.5rem+var(--app-safe-bottom))] animate-in fade-in slide-in-from-bottom-4 duration-200"
           role="region"
-          aria-label="TaskFlow Voice Assistant"
+          aria-label="TaskMate Voice Assistant"
         >
           <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-indigo-200 dark:border-indigo-800 rounded-2xl shadow-2xl p-3.5 space-y-2.5">
             {/* Header row */}
@@ -76,20 +76,20 @@ export const VoiceAssistantHUD = ({
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                       {isAwake
-                        ? 'TaskFlow Awake — Speak command'
+                        ? 'Mate Awake — Speak command'
                         : voiceState === 'listening'
                         ? isWakeMode
-                          ? 'Say "Task Flow" + command...'
+                          ? 'Say "Mate" + command...'
                           : 'Listening...'
                         : voiceState === 'processing'
                         ? 'Executing command...'
                         : voiceState === 'speaking'
                         ? 'Speaking response...'
-                        : 'TaskFlow Voice Ready'}
+                        : 'Mate Voice Ready'}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                    {partialText || lastTranscript || 'Tap mic or enable Wake ON for "Task Flow"'}
+                    {partialText || lastTranscript || 'Tap mic or enable Wake ON for "Mate"'}
                   </p>
                 </div>
               </div>
@@ -179,10 +179,10 @@ export const VoiceAssistantHUD = ({
                 </div>
                 <div>
                   <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    TaskFlow Voice Commands
+                    TaskMate Voice Commands
                   </h2>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Say &ldquo;Task Flow&rdquo; followed by any command (enable Wake ON for background apps), or tap an example below.
+                    Say &ldquo;Mate&rdquo; followed by any command (enable Wake ON for background apps), or tap an example below.
                   </p>
                 </div>
               </div>

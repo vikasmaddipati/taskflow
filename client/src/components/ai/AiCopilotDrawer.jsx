@@ -5,8 +5,6 @@ import {
   Send,
   Bot,
   User,
-  Calendar,
-  CheckCircle2,
   RefreshCw,
   Maximize2
 } from 'lucide-react';
@@ -19,7 +17,7 @@ export const AiCopilotDrawer = ({
   onTaskAction,
   showToast
 }) => {
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState(() => [
     {
       id: 'welcome',
       sender: 'ai',
@@ -85,6 +83,7 @@ export const AiCopilotDrawer = ({
         text: `⚠️ ${err.response?.data?.message || 'Error communicating with AI assistant'}`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
+      showToast?.({ type: 'error', message: err.response?.data?.message || 'Error communicating with AI assistant' });
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsSending(false);
@@ -143,7 +142,7 @@ export const AiCopilotDrawer = ({
             </div>
 
             <div
-              className={`p-2.5 rounded-xl whitespace-pre-line leading-relaxed ${
+              className={`p-2.5 rounded-xl whitespace-pre-line leading-relaxed break-words ${
                 m.sender === 'user'
                   ? 'bg-indigo-600 text-white rounded-tr-xs'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-xs border border-slate-200/50 dark:border-slate-700/50'

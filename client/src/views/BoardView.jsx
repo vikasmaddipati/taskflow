@@ -3,18 +3,14 @@ import {
   Plus,
   Search,
   Filter,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
   Calendar,
+  CalendarPlus,
   CheckSquare,
   Paperclip,
-  ChevronRight,
-  MoreVertical,
-  MoveRight
+  Trash2
 } from 'lucide-react';
 import api from '../services/api';
-import { useAuth } from '../context/AuthContext';
+import { openInGoogleCalendar } from '../utils/calendarUtils';
 
 const COLUMNS = [
   { id: 'pending', label: 'To Do', color: 'border-amber-500/30 bg-amber-500/5 text-amber-600 dark:text-amber-400' },
@@ -30,7 +26,6 @@ const priorityStyles = {
 };
 
 export const BoardView = ({ onOpenCreateModal, onEditTask, onDeleteTask, refreshTrigger, showToast }) => {
-  const { currentOrg, currentWorkspace } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -51,7 +46,7 @@ export const BoardView = ({ onOpenCreateModal, onEditTask, onDeleteTask, refresh
     } finally {
       setLoading(false);
     }
-  }, [currentOrg?._id, currentWorkspace?._id]);
+  }, []);
 
   useEffect(() => {
     fetchTasks();
@@ -181,7 +176,13 @@ export const BoardView = ({ onOpenCreateModal, onEditTask, onDeleteTask, refresh
       </div>
 
       {/* Board Columns Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+      {loading ? (
+        <div className="flex flex-col items-center justify-center p-16">
+          <div className="w-8 h-8 border-[3px] border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
+          <span className="mt-3 text-xs text-slate-500">Loading board columns...</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
         {COLUMNS.map((col) => {
           const colTasks = tasksByColumn[col.id] || [];
           return (
@@ -189,7 +190,7 @@ export const BoardView = ({ onOpenCreateModal, onEditTask, onDeleteTask, refresh
               key={col.id}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, col.id)}
-              className="flex flex-col bg-slate-100/70 dark:bg-slate-900/60 rounded-2xl p-3 border border-slate-200 dark:border-slate-800 min-h-[500px]"
+              className="flex flex-col bg-slate-100/70 dark:bg-slate-900/60 rounded-2xl p-3 border border-slate-200 dark:border-slate-800 min-h-[260px] sm:min-h-[500px]"
             >
               {/* Column Header */}
               <div className="flex items-center justify-between px-2 py-2 mb-2">
@@ -216,19 +217,48 @@ export const BoardView = ({ onOpenCreateModal, onEditTask, onDeleteTask, refresh
                       draggable
                       onDragStart={(e) => handleDragStart(e, task._id)}
                       onClick={() => onEditTask?.(task)}
-                      className="group p-3.5 bg-white dark:bg-slate-850 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-xs hover:shadow-md transition-all cursor-grab active:cursor-grabbing hover:border-indigo-500/50"
+                      className="group p-3.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-xs hover:shadow-md transition-all cursor-grab active:cursor-grabbing hover:border-indigo-500/50"
                     >
-                      {/* Priority & Category */}
+                      {/* Priority, Category & Google Calendar */}
                       <div className="flex items-center justify-between gap-2 mb-2">
-                        <span
-                          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${priorityStyles[task.priority] || priorityStyles.medium}`}
-                        >
-                          {task.priority}
-                        </span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${priorityStyles[task.priority] || priorityStyles.medium}`}
+                          >
+                            {task.priority}
+                          </span>
 
-                        <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate max-w-[100px]">
-                          {task.category || 'General'}
-                        </span>
+                          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate max-w-[90px]">
+                            {task.category || 'General'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openInGoogleCalendar(task);
+                            }}
+                            className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded transition-colors"
+                            title="Add to Google Calendar"
+                          >
+                            <CalendarPlus className="w-3.5 h-3.5" />
+                          </button>
+                          {onDeleteTask && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteTask(task._id);
+                              }}
+                              className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition-colors"
+                              title="Delete task"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {/* Title */}
@@ -271,7 +301,7 @@ export const BoardView = ({ onOpenCreateModal, onEditTask, onDeleteTask, refresh
 
                         {/* Column shift quick selector */}
                         <div
-                          className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {COLUMNS.filter((c) => c.id !== col.id).map((targetCol) => (
@@ -300,6 +330,7 @@ export const BoardView = ({ onOpenCreateModal, onEditTask, onDeleteTask, refresh
           );
         })}
       </div>
+      )}
     </div>
   );
 };

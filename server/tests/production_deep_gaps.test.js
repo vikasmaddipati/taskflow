@@ -1,4 +1,4 @@
-// TaskFlow — Production Deep Gaps & Enterprise Hardening Verification Suite
+// TaskMate — Production Deep Gaps & Enterprise Hardening Verification Suite
 // Validates: Distributed Schedulers, Storage Cleanup, Comment Lifecycle, Bulk Operations, Workspace Task Migration, and SSE Real-Time Stream.
 import fs from 'fs';
 import path from 'path';
@@ -37,7 +37,7 @@ async function request(endpoint, options = {}) {
 
 async function runProductionDeepGapsTests() {
   console.log('================================================================');
-  console.log('   TaskFlow Production Deep Gaps & Enterprise Hardening Suite  ');
+  console.log('   TaskMate Production Deep Gaps & Enterprise Hardening Suite  ');
   console.log('================================================================\n');
 
   let passed = 0;
@@ -89,7 +89,7 @@ async function runProductionDeepGapsTests() {
     // -------------------------------------------------------------------------
     // Setup: Register Test Owner & Member
     // -------------------------------------------------------------------------
-    const ownerEmail = `enterprise_owner_${timestamp}@taskflow.corp`;
+    const ownerEmail = `enterprise_owner_${timestamp}@taskmate.corp`;
     const regRes = await request('/api/v1/auth/register', {
       method: 'POST',
       body: JSON.stringify({
@@ -315,7 +315,7 @@ async function runProductionDeepGapsTests() {
     console.log('\n--- TEST GROUP 6: Final Owner Protection on Account Deletion ---');
 
     // Invite another member to the owner's organization
-    const memberEmail = `team_colleague_${timestamp}@taskflow.corp`;
+    const memberEmail = `team_colleague_${timestamp}@taskmate.corp`;
     const inviteRes = await request(`/api/v1/organizations/${orgId}/invitations`, {
       method: 'POST',
       headers: ownerHeaders,

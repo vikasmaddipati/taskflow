@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, RotateCcw } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { TaskItem } from '../components/tasks/TaskItem';
 import { EmptyState } from '../components/common/EmptyState';
 import api from '../services/api';
@@ -22,7 +22,7 @@ export const CompletedView = ({
       try {
         setLoading(true);
         setError(null);
-        const res = await api.get('/tasks?status=completed&sortBy=updatedAt&sortOrder=desc', {
+        const res = await api.get('/tasks?status=completed&sortBy=updatedAt&sortOrder=desc&limit=100', {
           signal: controller.signal
         });
         if (res.data.success) {
@@ -65,7 +65,7 @@ export const CompletedView = ({
 
       {loading ? (
         <div className="flex flex-col items-center justify-center p-12">
-          <div className="w-8 h-8 border-3 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+          <div className="w-8 h-8 border-[3px] border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
           <span className="mt-3 text-xs text-slate-500">Loading completed tasks...</span>
         </div>
       ) : error ? (

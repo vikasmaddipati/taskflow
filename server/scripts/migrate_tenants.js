@@ -18,7 +18,7 @@ async function runMigration() {
   const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/taskmanager';
 
   console.log('================================================================');
-  console.log(` TaskFlow SaaS Multi-Tenancy & Workspace Migration Script`);
+  console.log(` TaskMate SaaS Multi-Tenancy & Workspace Migration Script`);
   console.log(` Mode: ${isDryRun ? 'DRY RUN (No database mutations will be made)' : 'LIVE EXECUTION'}`);
   console.log(` Target URI: ${uri}`);
   console.log('================================================================\n');

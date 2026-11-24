@@ -63,12 +63,38 @@ const PATH_VIEW_MAP = {
 
 const getViewFromLocation = () => {
   if (typeof window === 'undefined') return 'dashboard';
+  const pathname = (window.location.pathname || '/').toLowerCase().replace(/\/+$/, '') || '/';
+  if (pathname === '/privacy' || pathname === '/privacy.html') {
+    window.location.href = '/privacy.html';
+    return 'dashboard';
+  }
+  if (pathname === '/delete-account' || pathname === '/delete-account.html') {
+    window.location.href = '/delete-account.html';
+    return 'dashboard';
+  }
+  if (pathname.startsWith('/invite/')) {
+    const rawToken = window.location.pathname.split(/\/invite\/?/i)[1]?.split('/')[0]?.split('?')[0];
+    if (rawToken) {
+      try {
+        localStorage.setItem('tm_pending_invite', rawToken);
+      } catch {}
+    }
+    return 'team';
+  }
   // Check hash if present (#/tasks or #tasks)
   if (window.location.hash) {
     const hash = window.location.hash.replace(/^#\/?/, '/').toLowerCase();
+    if (hash.startsWith('/invite/')) {
+      const rawToken = hash.split(/\/invite\/?/i)[1]?.split('/')[0]?.split('?')[0];
+      if (rawToken) {
+        try {
+          localStorage.setItem('tm_pending_invite', rawToken);
+        } catch {}
+      }
+      return 'team';
+    }
     if (PATH_VIEW_MAP[hash]) return PATH_VIEW_MAP[hash];
   }
-  const pathname = (window.location.pathname || '/').toLowerCase().replace(/\/+$/, '') || '/';
   return PATH_VIEW_MAP[pathname] || 'dashboard';
 };
 
@@ -93,17 +119,39 @@ const AppContent = () => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
 
-  // Network online/offline listener
-  useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
+  // Toast notification state
+  const [toast, setToast] = useState(null);
+
+  const showToast = useCallback((toastData, maybeType) => {
+    if (typeof toastData === 'string') {
+      setToast({ message: toastData, type: maybeType || 'info' });
+    } else if (toastData && typeof toastData === 'object') {
+      setToast(toastData);
+    }
   }, []);
+
+  // Global refresh trigger for lists when a task is updated/deleted
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Global counts for sidebar badges
+  const [sidebarStats, setSidebarStats] = useState({
+    total: 0,
+    dueToday: 0,
+    completed: 0,
+    completionRate: 0
+  });
+
+  // Modals state
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [isSubmittingTask, setIsSubmittingTask] = useState(false);
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState(null);
+  const [isDeletingTask, setIsDeletingTask] = useState(false);
+
+  const [isCreateOrgModalOpen, setIsCreateOrgModalOpen] = useState(false);
+  const [isAiCopilotOpen, setIsAiCopilotOpen] = useState(false);
 
   // Synchronize view changes with browser history
   const navigateToView = useCallback((newView, replace = false) => {
@@ -118,6 +166,18 @@ const AppContent = () => {
         window.history.pushState({ view: newView }, '', targetPath);
       }
     }
+  }, []);
+
+  // Network online/offline listener
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   // Handle browser Back / Forward buttons via popstate
@@ -145,35 +205,29 @@ const AppContent = () => {
     }
   }, [isAuthenticated]);
 
-  // Global refresh trigger for lists when a task is updated/deleted
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  // Handle invitation link acceptance
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const pendingInvite = localStorage.getItem('tm_pending_invite');
+    if (!pendingInvite) return;
+    localStorage.removeItem('tm_pending_invite');
 
-  // Global counts for sidebar badges
-  const [sidebarStats, setSidebarStats] = useState({
-    total: 0,
-    dueToday: 0,
-    completed: 0,
-    completionRate: 0
-  });
-
-  // Modals state
-  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState(null);
-  const [isSubmittingTask, setIsSubmittingTask] = useState(false);
-
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [taskToDelete, setTaskToDelete] = useState(null);
-  const [isDeletingTask, setIsDeletingTask] = useState(false);
-
-  const [isCreateOrgModalOpen, setIsCreateOrgModalOpen] = useState(false);
-  const [isAiCopilotOpen, setIsAiCopilotOpen] = useState(false);
-
-  // Toast notification state
-  const [toast, setToast] = useState(null);
-
-  const showToast = useCallback((toastData) => {
-    setToast(toastData);
-  }, []);
+    api.post(`/organizations/invitations/${pendingInvite}/accept`)
+      .then(async (res) => {
+        if (res.data?.success) {
+          showToast({ type: 'success', message: res.data.message || 'Joined organization successfully!' });
+          await fetchOrganizations();
+          if (res.data.organization?._id) {
+            await switchOrganization(res.data.organization._id);
+          }
+          navigateToView('team', true);
+        }
+      })
+      .catch((err) => {
+        showToast({ type: 'error', message: err.response?.data?.message || 'Invalid or expired invitation link' });
+        navigateToView('dashboard', true);
+      });
+  }, [isAuthenticated, fetchOrganizations, switchOrganization, navigateToView, showToast]);
 
   // Listen to offline mutation queue sync events
   useEffect(() => {
@@ -197,8 +251,10 @@ const AppContent = () => {
         try {
           const data = JSON.parse(event.data);
           if (data && data.type && data.type !== 'connected') {
-            if (data.type === 'task.phone_call_triggered' && data.task) {
-              window.dispatchEvent(new CustomEvent('taskflow:phone_call', { detail: data }));
+            if (data.type === 'task.phone_call_triggered' && (data.task || data.payload?.task)) {
+              const detail = data.task ? data : { ...data, task: data.payload.task };
+              window.dispatchEvent(new CustomEvent('taskflow:phone_call', { detail }));
+              window.dispatchEvent(new CustomEvent('taskmate:phone_call', { detail }));
             }
             setRefreshTrigger((prev) => prev + 1);
           }
@@ -312,7 +368,7 @@ const AppContent = () => {
   };
 
   // Toggle completion status
-  const handleToggleStatus = async (taskId) => {
+  const handleToggleStatus = useCallback(async (taskId) => {
     try {
       const res = await api.patch(`/tasks/${taskId}/toggle`);
       if (res.data.success) {
@@ -326,7 +382,7 @@ const AppContent = () => {
       const message = err.response?.data?.message || 'Failed to update task status';
       showToast({ type: 'error', message });
     }
-  };
+  }, [showToast]);
 
   // Open delete confirmation modal
   const handleOpenDeleteModal = (task) => {
@@ -581,11 +637,11 @@ const AppContent = () => {
         showToast={showToast}
       />
 
-      {/* Floating AI Copilot Trigger Button */}
+      {/* Floating AI Copilot Trigger Button (desktop only; mobile has header trigger) */}
       {!isAiCopilotOpen && currentView !== 'ai' && (
         <button
           onClick={() => setIsAiCopilotOpen(true)}
-          className="fixed bottom-[calc(1.5rem+var(--app-safe-bottom))] right-6 z-40 p-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 group cursor-pointer"
+          className="hidden sm:flex fixed bottom-[calc(1.5rem+var(--app-safe-bottom))] right-6 z-40 p-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all items-center gap-2 group cursor-pointer"
           title="Open AI Copilot"
         >
           <Sparkles className="w-5 h-5 animate-pulse" />

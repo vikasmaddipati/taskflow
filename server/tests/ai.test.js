@@ -1,7 +1,7 @@
 import { parseNaturalDateTime, parseTaskSchedulePrompt, generateTaskBreakdown } from '../src/services/aiService.js';
 
 console.log('================================================================');
-console.log('   TaskFlow AI Assistant & Scheduling Engine Verification Suite ');
+console.log('   TaskMate AI Assistant & Scheduling Engine Verification Suite ');
 console.log('================================================================\n');
 
 let passed = 0;

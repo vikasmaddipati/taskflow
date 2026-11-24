@@ -41,9 +41,9 @@ export const dispatchWebhookEvent = async (organizationId, event, payload) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-TaskFlow-Event': event,
-          'X-TaskFlow-Signature': signature,
-          'User-Agent': 'TaskFlow-Webhooks/1.0'
+          'X-TaskMate-Event': event,
+          'X-TaskMate-Signature': signature,
+          'User-Agent': 'TaskMate-Webhooks/1.0'
         },
         body: serializedPayload,
         signal: AbortSignal.timeout(5000)

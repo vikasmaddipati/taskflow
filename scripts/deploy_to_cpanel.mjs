@@ -16,7 +16,7 @@ const APP_DIR = '/home/taskflow/taskflow';
 const basicAuth = Buffer.from(`${USERNAME}:${PASSWORD}`).toString('base64');
 
 console.log('====================================================');
-console.log(' Starting TaskFlow Automated cPanel Deployment');
+console.log(' Starting TaskMate Automated cPanel Deployment');
 console.log(` Target: https://${CPANEL_HOST}:${CPANEL_PORT}`);
 console.log(` Account: ${USERNAME}`);
 console.log('====================================================\n');
@@ -99,40 +99,44 @@ async function uploadZip() {
 
 async function extractZip() {
   console.log('[2/4] Extracting archive on server...');
-  const postData = `cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&cpanel_jsonapi_apiversion=2&filelist=1&multiform=1&doubledecode=0&op=extract&metadata=&sourcefiles=${encodeURIComponent(APP_DIR + '/taskflow_cpanel_deploy.zip')}&destfiles=${encodeURIComponent(APP_DIR)}`;
-
-  const res = await new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: CPANEL_HOST,
-      port: CPANEL_PORT,
-      path: '/json-api/cpanel',
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${basicAuth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(postData)
-      },
-      rejectUnauthorized: false
-    }, (res) => {
-      let body = '';
-      res.on('data', (c) => (body += c));
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(body));
-        } catch (e) {
-          resolve({ raw: body });
-        }
+  const extractTo = async (dest) => {
+    const postData = `cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&cpanel_jsonapi_apiversion=2&filelist=1&multiform=1&doubledecode=0&op=extract&metadata=&sourcefiles=${encodeURIComponent(APP_DIR + '/taskflow_cpanel_deploy.zip')}&destfiles=${encodeURIComponent(dest)}`;
+    return new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: CPANEL_HOST,
+        port: CPANEL_PORT,
+        path: '/json-api/cpanel',
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${basicAuth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(postData)
+        },
+        rejectUnauthorized: false
+      }, (res) => {
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch (e) {
+            resolve({ raw: body });
+          }
+        });
       });
+      req.on('error', reject);
+      req.write(postData);
+      req.end();
     });
-    req.on('error', reject);
-    req.write(postData);
-    req.end();
-  });
+  };
 
-  if (res?.cpanelresult?.data?.[0]?.result === 1) {
-    console.log('[2/4] Extraction successful!');
+  const res1 = await extractTo(APP_DIR);
+  const res2 = await extractTo(APP_DIR + '/public');
+
+  if (res1?.cpanelresult?.data?.[0]?.result === 1 || res2?.cpanelresult?.data?.[0]?.result === 1) {
+    console.log('[2/4] Extraction to root and public successful!');
   } else {
-    console.error('[2/4] Extraction error:', res);
+    console.error('[2/4] Extraction error:', res1, res2);
     throw new Error('Extraction failed');
   }
 }
@@ -164,7 +168,7 @@ async function verifyDeployment() {
           path: urlPath,
           rejectUnauthorized: false,
           headers: {
-            'User-Agent': 'TaskFlow-Deploy-Verifier/1.0'
+            'User-Agent': 'TaskMate-Deploy-Verifier/1.0'
           }
         },
         (res) => {

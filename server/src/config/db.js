@@ -3,8 +3,8 @@ import { exec } from 'child_process';
 import fs from 'fs';
 
 const LOCAL_URI = 'mongodb://127.0.0.1:27017/taskflow';
-const MONGOD_PATH = '/home/taskflow/mongodb/bin/mongod';
-const MONGOD_CONF = '/home/taskflow/mongodb/mongod.conf';
+const MONGOD_PATH = fs.existsSync('/home/taskmate/mongodb/bin/mongod') ? '/home/taskmate/mongodb/bin/mongod' : '/home/taskflow/mongodb/bin/mongod';
+const MONGOD_CONF = fs.existsSync('/home/taskmate/mongodb/mongod.conf') ? '/home/taskmate/mongodb/mongod.conf' : '/home/taskflow/mongodb/mongod.conf';
 
 const ensureLocalMongoDaemon = () => {
   return new Promise((resolve) => {
@@ -26,6 +26,16 @@ const ensureLocalMongoDaemon = () => {
 };
 
 const connectDB = async () => {
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+  if (mongoose.connection.readyState === 2) {
+    for (let i = 0; i < 20; i++) {
+      if (mongoose.connection.readyState === 1) return mongoose.connection;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
   let uri = process.env.MONGODB_URI;
   console.error('[MongoDB DEBUG] Initial raw process.env.MONGODB_URI:', uri);
   if (!uri || uri.includes('<username>') || uri.includes('yourmongodb.net') || uri.includes('30kec2h.mongodb.net')) {

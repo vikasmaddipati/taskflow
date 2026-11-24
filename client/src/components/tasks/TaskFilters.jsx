@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, X, Filter, ArrowUpDown } from 'lucide-react';
+import { Search, X, ArrowUpDown } from 'lucide-react';
 
 export const TaskFilters = ({
   search,

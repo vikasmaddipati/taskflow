@@ -13,6 +13,8 @@ import { deleteStoredFile, deleteMultipleStoredFiles } from '../services/storage
 import { dispatchWebhookEvent } from '../services/webhookDispatcher.js';
 import { broadcastTenantEvent } from '../services/realtimeService.js';
 import { notifyAdminTaskAssigned, notifyAdminTaskCompleted } from '../services/whatsappService.js';
+import { notifyTaskAssignedEmail, notifyTaskCompletedEmail } from '../services/emailService.js';
+import { escapeRegex } from '../utils/validators.js';
 
 // @desc    Get paginated tasks for active organization with search, filter, and sorting
 // @route   GET /api/tasks
@@ -138,7 +140,7 @@ export const getTasks = async (req, res, next) => {
 
     // Search filter across title and description
     if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), 'i');
+      const searchRegex = new RegExp(escapeRegex(search.trim()), 'i');
       if (query.$and) {
         query.$and.push({ $or: [{ title: searchRegex }, { description: searchRegex }] });
       } else if (query.$or) {
@@ -535,10 +537,13 @@ export const createTask = async (req, res, next) => {
     broadcastTenantEvent(orgId, 'task.created', { task: populatedTask });
     dispatchWebhookEvent(orgId, 'task.created', { task: populatedTask });
 
-    // WhatsApp Notification: Alert admin if task is assigned to a team member
-    if (populatedTask.assignedTo) {
+    // WhatsApp & Email Notifications: Alert members and admin if task is assigned
+    if (populatedTask.assignedTo || (populatedTask.collaborators && populatedTask.collaborators.length > 0)) {
       notifyAdminTaskAssigned(populatedTask, orgId).catch((err) => {
         console.warn('[WhatsApp Task Created Warning]:', err.message);
+      });
+      notifyTaskAssignedEmail(populatedTask, orgId, req.user.name).catch((err) => {
+        console.warn('[Email Task Created Warning]:', err.message);
       });
     }
 
@@ -635,6 +640,12 @@ export const updateTask = async (req, res, next) => {
       const dateNorm = normalizeDueDate(targetDateInput, clientTz, targetTimeInput);
       if (dateNorm.dueDateString !== task.dueDateString || dateNorm.dueTime !== task.dueTime) {
         changes.dueDate = { old: task.dueDateString, new: dateNorm.dueDateString, dueTime: dateNorm.dueTime };
+        // Reset reminder notifications when due date or time changes
+        task.remindedAt = null;
+        task.whatsapp30MinNotifiedAt = null;
+        task.whatsappDueNotifiedAt = null;
+        task.email30MinNotifiedAt = null;
+        task.emailDueNotifiedAt = null;
       }
       task.dueDate = dateNorm.dueDate;
       task.dueDateString = dateNorm.dueDateString;
@@ -731,14 +742,23 @@ export const updateTask = async (req, res, next) => {
       .populate('user', 'name email avatar')
       .populate('workspace', 'name isDefault');
 
-    // WhatsApp Notification: If status changed to completed or assignee changed
+    // WhatsApp & Email Notifications: If status changed to completed or assignee changed
     if (changes.status && updatedTask.status === 'completed') {
       notifyAdminTaskCompleted(updatedTask, orgId, req.user.name).catch((err) => {
         console.warn('[WhatsApp Task Status Warning]:', err.message);
       });
-    } else if (changes.assignedTo && updatedTask.assignedTo) {
+      notifyTaskCompletedEmail(updatedTask, orgId, req.user.name).catch((err) => {
+        console.warn('[Email Task Status Warning]:', err.message);
+      });
+    } else if (
+      (changes.assignedTo && updatedTask.assignedTo) ||
+      (changes.collaborators && updatedTask.collaborators?.length > 0)
+    ) {
       notifyAdminTaskAssigned(updatedTask, orgId).catch((err) => {
         console.warn('[WhatsApp Task Assign Warning]:', err.message);
+      });
+      notifyTaskAssignedEmail(updatedTask, orgId, req.user.name).catch((err) => {
+        console.warn('[Email Task Assign Warning]:', err.message);
       });
     }
 
@@ -846,11 +866,14 @@ export const toggleTaskStatus = async (req, res, next) => {
       });
     }
 
-    // WhatsApp Notification on task toggle completion
+    // WhatsApp & Email Notifications on task toggle completion
     if (task.status === 'completed') {
       const populatedForWhatsApp = await Task.findById(task._id).populate('assignedTo', 'name email');
       notifyAdminTaskCompleted(populatedForWhatsApp || task, orgId, req.user.name).catch((err) => {
         console.warn('[WhatsApp Task Toggle Warning]:', err.message);
+      });
+      notifyTaskCompletedEmail(populatedForWhatsApp || task, orgId, req.user.name).catch((err) => {
+        console.warn('[Email Task Toggle Warning]:', err.message);
       });
     }
 
@@ -940,7 +963,7 @@ export const getTrashTasks = async (req, res, next) => {
     }
 
     if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), 'i');
+      const searchRegex = new RegExp(escapeRegex(search.trim()), 'i');
       if (query.$or) {
         query.$and = [{ $or: query.$or }, { $or: [{ title: searchRegex }, { description: searchRegex }] }];
         delete query.$or;
@@ -1199,13 +1222,13 @@ export const exportTasks = async (req, res, next) => {
       const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
 
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', 'attachment; filename="taskflow_tasks_export.csv"');
+      res.setHeader('Content-Disposition', 'attachment; filename="taskmate_tasks_export.csv"');
       return res.status(200).send(csvContent);
     }
 
     // Default JSON export
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', 'attachment; filename="taskflow_tasks_export.json"');
+    res.setHeader('Content-Disposition', 'attachment; filename="taskmate_tasks_export.json"');
     res.status(200).json({
       success: true,
       exportedAt: new Date().toISOString(),
@@ -1561,10 +1584,13 @@ export const updateTaskStatus = async (req, res, next) => {
     broadcastTenantEvent(orgId, 'task.status_changed', { taskId: task._id, oldStatus, newStatus: status });
     dispatchWebhookEvent(orgId, 'task.status_changed', { taskId: task._id, oldStatus, newStatus: status });
 
-    // WhatsApp Notification: Alert admin on status update / completion
+    // WhatsApp & Email Notifications: Alert admin on status update / completion
     if (status === 'completed' || oldStatus !== status) {
       Task.findById(task._id).populate('assignedTo', 'name email').then((populated) => {
         notifyAdminTaskCompleted(populated || task, orgId, req.user.name).catch(() => {});
+        if (status === 'completed') {
+          notifyTaskCompletedEmail(populated || task, orgId, req.user.name).catch(() => {});
+        }
       }).catch(() => {});
     }
 

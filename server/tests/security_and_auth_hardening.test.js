@@ -40,7 +40,7 @@ async function request(endpoint, options = {}) {
 
 async function runSecurityTests() {
   console.log('================================================================');
-  console.log('   TaskFlow Critical Security & Authentication Hardening Suite   ');
+  console.log('   TaskMate Critical Security & Authentication Hardening Suite   ');
   console.log('================================================================\n');
 
   let passed = 0;

@@ -89,7 +89,7 @@ export const TaskIncomingCallModal = ({
     alarmAudioService.playCallConnectedTone();
     setCallState('connected');
 
-    const voiceMessage = `Hello! This is an automated telephone call from TaskFlow. We are calling to inform you that your task: "${task.title}" has completed its scheduled due time. Please press complete or snooze to manage this task.`;
+    const voiceMessage = `Hello! This is an automated telephone call from TaskMate. We are calling to inform you that your task: "${task.title}" has completed its scheduled due time. Please press complete or snooze to manage this task.`;
     setTranscript(voiceMessage);
 
     try {
@@ -181,7 +181,7 @@ export const TaskIncomingCallModal = ({
             </div>
 
             <h2 id="phone-call-title" className="text-2xl font-bold tracking-tight text-white pt-1">
-              TaskFlow Automated Calling
+              TaskMate Automated Calling
             </h2>
 
             <p className="text-xs text-slate-400 font-medium">

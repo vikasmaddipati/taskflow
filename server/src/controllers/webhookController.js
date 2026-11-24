@@ -138,7 +138,7 @@ export const handleRazorpayWebhook = async (req, res, next) => {
             status: 'paid',
             paidAt: new Date(),
             receiptUrl: paymentEntity.receipt || null,
-            description: `Payment for ${subscription?.plan || 'TaskFlow'} plan`
+            description: `Payment for ${subscription?.plan || 'TaskMate'} plan`
           });
 
           if (subscription) {

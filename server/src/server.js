@@ -12,6 +12,7 @@ import v1Router from './routes/v1/index.js';
 import { getHealth, getLiveness, getReadiness, setShuttingDown } from './controllers/healthController.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 import { startReminderDaemon } from './services/reminderScheduler.js';
+import { hasStoredBaileysCreds, connectBaileys } from './services/baileysService.js';
 
 // Validate environment variables on startup (strict fail-fast)
 validateEnv();
@@ -84,6 +85,7 @@ app.use(
       }
     },
     crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     frameguard: { action: 'sameorigin' },
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
@@ -183,28 +185,30 @@ app.get('/api/outbound-ip', async (req, res) => {
   }
 });
 
-app.get('/api/admin/reset-test-user', async (req, res) => {
-  try {
-    const User = mongoose.model('User');
-    const Organization = mongoose.model('Organization');
-    const deletedUser = await User.deleteMany({ email: 'vikasmaddipati3@gmail.com' });
-    const deletedOrg = await Organization.deleteMany({ name: "Vikas Maddipati's Workspace" });
-    res.json({ success: true, deletedUser, deletedOrg });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+if (config.env !== 'production') {
+  app.get('/api/admin/reset-test-user', async (req, res) => {
+    try {
+      const User = mongoose.model('User');
+      const Organization = mongoose.model('Organization');
+      const deletedUser = await User.deleteMany({ email: 'vikasmaddipati3@gmail.com' });
+      const deletedOrg = await Organization.deleteMany({ name: "Vikas Maddipati's Workspace" });
+      res.json({ success: true, deletedUser, deletedOrg });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
-app.get('/api/app-restart', (req, res) => {
-  res.json({ restarting: true, timestamp: Date.now() });
-  setTimeout(() => {
-    console.log('[Server] Restart requested via /api/app-restart');
-    process.exit(0);
-  }, 200);
-});
+  app.get('/api/app-restart', (req, res) => {
+    res.json({ restarting: true, timestamp: Date.now() });
+    setTimeout(() => {
+      console.log('[Server] Restart requested via /api/app-restart');
+      process.exit(0);
+    }, 200);
+  });
+}
 
 // Database connection guard for API routes
-app.use('/api', (req, res, next) => {
+app.use('/api', async (req, res, next) => {
   // Allow health endpoints and session probe to pass through
   if (
     req.path === '/health' ||
@@ -218,7 +222,16 @@ app.use('/api', (req, res, next) => {
     return next();
   }
 
-  // Reject immediately only when completely disconnected
+  // If not connected, attempt immediate connection on-demand before rejecting
+  if (mongoose.connection.readyState === 0) {
+    try {
+      await connectDB();
+    } catch (err) {
+      console.warn('[DB Guard] On-demand connect attempt failed:', err.message);
+    }
+  }
+
+  // Reject immediately only when completely disconnected after attempt
   if (mongoose.connection.readyState === 0) {
     return res.status(503).json({
       success: false,
@@ -274,6 +287,14 @@ const server = app.listen(PORT, HOST, () => {
   // Background reminder scheduler daemon
   if (config.env !== 'test') {
     startReminderDaemon();
+
+    // Auto-connect Baileys on startup if stored credentials exist
+    if (hasStoredBaileysCreds()) {
+      console.log('[Server] Stored WhatsApp Multi-Device session found. Initializing Baileys connection...');
+      connectBaileys().catch((err) => {
+        console.warn('[Server] Auto Baileys reconnect error on startup:', err.message);
+      });
+    }
   }
 });
 

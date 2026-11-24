@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users,
   UserPlus,
@@ -6,7 +6,6 @@ import {
   Trash2,
   Mail,
   CheckCircle2,
-  AlertCircle,
   Briefcase,
   Plus,
   ArrowRightLeft,
@@ -42,7 +41,7 @@ export const TeamView = ({ showToast }) => {
   const [transferTargetId, setTransferTargetId] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
 
-  const fetchTeamData = async () => {
+  const fetchTeamData = useCallback(async () => {
     if (!currentOrg?._id) return;
     try {
       setLoading(true);
@@ -66,11 +65,11 @@ export const TeamView = ({ showToast }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentOrg?._id]);
 
   useEffect(() => {
     fetchTeamData();
-  }, [currentOrg?._id]);
+  }, [fetchTeamData]);
 
   const handleInvite = async (e) => {
     e.preventDefault();
@@ -89,7 +88,12 @@ export const TeamView = ({ showToast }) => {
 
       if (res.data.success) {
         setInviteEmail('');
-        setInviteSuccess(`Invitation generated for ${res.data.invitation.email}`);
+        const rawToken = res.data.invitation?.token;
+        const link = rawToken ? `${window.location.origin}/invite/${rawToken}` : '';
+        setInviteSuccess({
+          message: `Invitation generated for ${res.data.invitation.email}`,
+          link
+        });
         showToast?.({ type: 'success', message: 'Invitation created successfully' });
         fetchTeamData();
       }
@@ -238,6 +242,13 @@ export const TeamView = ({ showToast }) => {
         )}
       </div>
 
+      {error && (
+        <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-2xl flex items-center justify-between text-sm text-rose-700 dark:text-rose-300">
+          <span>{error}</span>
+          <button onClick={fetchTeamData} className="font-semibold underline hover:no-underline">Retry</button>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         <button
@@ -282,13 +293,14 @@ export const TeamView = ({ showToast }) => {
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {members.map((m) => {
-                    const isSelf = m.user?._id === user?.id;
+                    const currentUserId = user?.id || user?._id;
+                    const isSelf = m.user?._id === currentUserId;
                     const isTargetOwner = m.role === 'owner';
                     const canEditThisMember = isOwnerOrAdmin && !isTargetOwner && !isSelf;
 
                     return (
-                      <div key={m.id} className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                        <div className="flex items-center gap-3 min-w-0">
+                      <div key={m._id || m.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
                           <div className="w-10 h-10 rounded-full bg-linear-to-tr from-indigo-500 to-purple-500 text-white flex items-center justify-center font-bold text-sm shrink-0">
                             {m.user?.name?.slice(0, 1)?.toUpperCase() || 'U'}
                           </div>
@@ -307,7 +319,7 @@ export const TeamView = ({ showToast }) => {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
                           {canEditThisMember ? (
                             <select
                               value={m.role}
@@ -390,9 +402,31 @@ export const TeamView = ({ showToast }) => {
               {isManagerOrAbove ? (
                 <form onSubmit={handleInvite} className="space-y-4">
                   {inviteSuccess && (
-                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 shrink-0" />
-                      <span>{inviteSuccess}</span>
+                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-700 dark:text-emerald-300 flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span className="font-semibold">{inviteSuccess.message || inviteSuccess}</span>
+                      </div>
+                      {inviteSuccess.link && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <input
+                            type="text"
+                            readOnly
+                            value={inviteSuccess.link}
+                            className="flex-1 px-2.5 py-1 text-[11px] rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 select-all font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard?.writeText(inviteSuccess.link);
+                              showToast?.({ type: 'success', message: 'Invite link copied to clipboard!' });
+                            }}
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] rounded-lg transition-colors shrink-0 cursor-pointer"
+                          >
+                            Copy Link
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -482,15 +516,19 @@ export const TeamView = ({ showToast }) => {
                           Members ({t.members?.length || 0}):
                         </span>
                         <div className="flex -space-x-1.5 overflow-hidden">
-                          {t.members?.map((tm) => (
-                            <div
-                              key={tm._id}
-                              title={tm.name}
-                              className="inline-block h-6 w-6 rounded-full ring-2 ring-white dark:ring-slate-900 bg-indigo-500 text-white text-[10px] flex items-center justify-center font-bold"
-                            >
-                              {tm.name?.[0]?.toUpperCase()}
-                            </div>
-                          ))}
+                          {t.members?.map((tm, idx) => {
+                            const tmId = tm?._id || tm?.id || tm || `member-${idx}`;
+                            const tmName = tm?.name || (typeof tm === 'string' ? tm : 'User');
+                            return (
+                              <div
+                                key={tmId}
+                                title={tmName}
+                                className="inline-flex h-6 w-6 rounded-full ring-2 ring-white dark:ring-slate-900 bg-indigo-500 text-white text-[10px] items-center justify-center font-bold"
+                              >
+                                {tmName[0]?.toUpperCase() || 'U'}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
@@ -581,9 +619,9 @@ export const TeamView = ({ showToast }) => {
                 >
                   <option value="">-- Choose Active Teammate --</option>
                   {members
-                    .filter((m) => m.user?._id !== user?.id)
+                    .filter((m) => m.user?._id !== (user?.id || user?._id))
                     .map((m) => (
-                      <option key={m.id} value={m.user?._id}>
+                      <option key={m._id || m.id} value={m.user?._id}>
                         {m.user?.name} ({m.user?.email}) — {m.role}
                       </option>
                     ))}

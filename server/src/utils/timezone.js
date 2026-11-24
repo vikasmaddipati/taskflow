@@ -17,6 +17,48 @@ export const getValidTimezone = (tz) => {
 };
 
 /**
+ * Normalizes user-provided time string into canonical 24-hour HH:mm format.
+ * Supports:
+ * - 24-hour format: "14:30", "9:30", "09:30", "14:30:00"
+ * - 12-hour format: "2:30 PM", "02:30 pm", "9 AM", "9:00 am", "11:45PM"
+ * Returns null if input is empty, null, or invalid.
+ */
+export const normalizeTime = (timeStr) => {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const raw = timeStr.trim();
+  if (!raw) return null;
+
+  // 1. Check for 12-hour format with AM/PM
+  const ampmMatch = raw.match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(am|pm)$/i);
+  if (ampmMatch) {
+    let hours = parseInt(ampmMatch[1], 10);
+    const minutes = parseInt(ampmMatch[2] || '0', 10);
+    const meridian = ampmMatch[3].toUpperCase();
+
+    if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) return null;
+
+    if (meridian === 'AM') {
+      if (hours === 12) hours = 0;
+    } else {
+      if (hours !== 12) hours += 12;
+    }
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+
+  // 2. Check for 24-hour format
+  const match24 = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (match24) {
+    const hours = parseInt(match24[1], 10);
+    const minutes = parseInt(match24[2], 10);
+    if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    }
+  }
+
+  return null;
+};
+
+/**
  * Gets the current calendar date string (YYYY-MM-DD) in the specified timezone
  */
 export const getTodayDateString = (timeZone = 'UTC') => {
@@ -95,7 +137,7 @@ export const normalizeDueDate = (input, timeZone = 'UTC', dueTime = null) => {
     return tzDate.getTime() - utcDate.getTime();
   };
 
-  const formattedDueTime = dueTime && /^([01]\d|2[0-3]):([0-5]\d)$/.test(dueTime.trim()) ? dueTime.trim() : null;
+  const formattedDueTime = normalizeTime(dueTime);
 
   // If input is YYYY-MM-DD
   if (typeof input === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.trim())) {
@@ -109,8 +151,11 @@ export const normalizeDueDate = (input, timeZone = 'UTC', dueTime = null) => {
         dueTime: formattedDueTime
       };
     }
+    // All-day task: Calculate local end-of-day in the user's timezone converted to UTC instant
+    const endLocalEstimate = new Date(`${dateStr}T23:59:59.999Z`);
+    const offsetMs = getOffsetMs(endLocalEstimate);
     return {
-      dueDate: new Date(`${dateStr}T23:59:59.999Z`),
+      dueDate: new Date(endLocalEstimate.getTime() - offsetMs),
       dueDateString: dateStr,
       dueTime: null
     };
@@ -128,10 +173,21 @@ export const normalizeDueDate = (input, timeZone = 'UTC', dueTime = null) => {
     month: '2-digit',
     day: '2-digit'
   });
+  const dateStr = formatter.format(parsed);
+
+  if (formattedDueTime) {
+    const localEstimate = new Date(`${dateStr}T${formattedDueTime}:00.000Z`);
+    const offsetMs = getOffsetMs(localEstimate);
+    return {
+      dueDate: new Date(localEstimate.getTime() - offsetMs),
+      dueDateString: dateStr,
+      dueTime: formattedDueTime
+    };
+  }
 
   return {
     dueDate: parsed,
-    dueDateString: formatter.format(parsed),
-    dueTime: formattedDueTime
+    dueDateString: dateStr,
+    dueTime: null
   };
 };

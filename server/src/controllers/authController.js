@@ -292,18 +292,28 @@ export const login = async (req, res, next) => {
     }
 
     if (!user.password) {
-      return res.status(400).json({
-        success: false,
-        message: 'This account was created using Google or Email OTP. Please sign in with that method or reset your password.'
-      });
-    }
-
-    const isMatch = await user.matchPassword(password);
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
+      // If user originally signed up via Google or Email OTP and enters a password now,
+      // seamlessly set their initial password and allow login
+      if (password && password.length >= 6) {
+        user.password = password;
+        if (!user.authProviders.includes('local')) {
+          user.authProviders.push('local');
+        }
+        await user.save();
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Please provide a password of at least 6 characters to set your account password.'
+        });
+      }
+    } else {
+      const isMatch = await user.matchPassword(password);
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid email or password'
+        });
+      }
     }
 
     const [tokens, organization] = await Promise.all([
@@ -1675,7 +1685,7 @@ export const testPhoneCall = async (req, res, next) => {
     const mockTask = {
       _id: new mongoose.Types.ObjectId(),
       title: req.body?.taskTitle || 'Complete Priority Milestone',
-      description: 'Automated test call for TaskFlow deadline alert system.',
+      description: 'Automated test call for TaskMate deadline alert system.',
       priority: 'high',
       category: 'Work',
       organization: req.organization?._id || user.currentOrganization,

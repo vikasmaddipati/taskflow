@@ -1,5 +1,5 @@
 # ==============================================================================
-# TaskFlow Frontend — Production Multi-Stage Container Image
+# TaskMate Frontend — Production Multi-Stage Container Image
 # ==============================================================================
 
 # Stage 1: Build Frontend Assets

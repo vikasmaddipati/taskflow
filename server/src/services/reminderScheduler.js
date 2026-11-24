@@ -2,9 +2,9 @@ import os from 'os';
 import Task from '../models/Task.js';
 import Notification from '../models/Notification.js';
 import SchedulerLock from '../models/SchedulerLock.js';
-import { sendOtpEmail } from './emailService.js';
+import { sendOtpEmail, notifyTask30MinWarningEmail, notifyTaskOverdueEmail } from './emailService.js';
 import { makeTaskDueCall } from './telephonyService.js';
-import { notifyAdmin30MinWarning, notifyAdminTaskOverdue } from './whatsappService.js';
+import { notifyAdmin30MinWarning, notifyAdminTaskOverdue, sendAdminWhatsAppMessage } from './whatsappService.js';
 
 const instanceId = `${os.hostname()}_${process.pid}_${Math.random().toString(36).substring(2, 8)}`;
 
@@ -15,7 +15,7 @@ const instanceId = `${os.hostname()}_${process.pid}_${Math.random().toString(36)
  * @param {number} lockTtlMs - Lock duration in milliseconds (default: 4 minutes)
  * @returns {Promise<boolean>} - True if acquired, false if held by another replica
  */
-export const acquireSchedulerLock = async (lockName = 'reminder_daemon', lockTtlMs = 4 * 60 * 1000) => {
+export const acquireSchedulerLock = async (lockName = 'reminder_daemon', lockTtlMs = 50 * 1000) => {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + lockTtlMs);
 
@@ -90,11 +90,22 @@ export const scanAndDispatchReminders = async (options = {}) => {
   const query = {
     isDeleted: false,
     status: { $nin: ['completed'] },
-    dueDate: { $ne: null, $lte: next24Hours },
-    $or: [
-      { remindedAt: null },
-      { whatsapp30MinNotifiedAt: null },
-      { whatsappDueNotifiedAt: null }
+    $and: [
+      {
+        $or: [
+          { dueDate: { $ne: null, $lte: next24Hours } },
+          { dueDateString: { $ne: null } }
+        ]
+      },
+      {
+        $or: [
+          { remindedAt: null },
+          { whatsapp30MinNotifiedAt: null },
+          { whatsappDueNotifiedAt: null },
+          { email30MinNotifiedAt: null },
+          { emailDueNotifiedAt: null }
+        ]
+      }
     ]
   };
 
@@ -115,7 +126,24 @@ export const scanAndDispatchReminders = async (options = {}) => {
       const recipientUser = task.assignedTo || task.user;
       if (!recipientUser) continue;
 
-      const isOverdue = new Date(task.dueDate) < now;
+      // Determine overdue status using both UTC timestamp and local calendar date/time
+      let isOverdue = Boolean(task.dueDate && new Date(task.dueDate) < now);
+      if (!isOverdue && task.dueDateString) {
+        try {
+          const tz = 'Asia/Kolkata';
+          const todayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+          const todayStr = todayFormatter.format(now);
+          if (task.dueDateString < todayStr) {
+            isOverdue = true;
+          } else if (task.dueDateString === todayStr && task.dueTime) {
+            const timeFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+            const nowTimeStr = timeFormatter.format(now);
+            if (task.dueTime <= nowTimeStr) {
+              isOverdue = true;
+            }
+          }
+        } catch {}
+      }
       const alertType = isOverdue ? 'overdue' : 'due_soon';
       const alertTitle = isOverdue
         ? `Task Overdue: "${task.title}"`
@@ -125,52 +153,94 @@ export const scanAndDispatchReminders = async (options = {}) => {
         ? `Task "${task.title}" was due on ${task.dueDateString || new Date(task.dueDate).toLocaleDateString()}. Please take action.`
         : `Task "${task.title}" is scheduled for completion within the next 24 hours.`;
 
-      // 1. Create In-App Notification
-      await Notification.create({
-        user: recipientUser._id,
-        organization: task.organization._id || task.organization,
-        task: task._id,
-        title: alertTitle,
-        message: alertMessage,
-        type: alertType
-      });
-      notificationsCreated++;
+      // 1. Create In-App Notification and dispatch initial email (only once per task)
+      if (!task.remindedAt) {
+        await Notification.create({
+          user: recipientUser._id,
+          organization: task.organization._id || task.organization,
+          task: task._id,
+          title: alertTitle,
+          message: alertMessage,
+          type: alertType
+        });
+        notificationsCreated++;
+
+        // Dispatch Email Alert (Non-blocking)
+        try {
+          if (recipientUser.email) {
+            await sendOtpEmail({
+              to: recipientUser.email,
+              name: recipientUser.name,
+              otp: 'DEADLINE',
+              purpose: 'login',
+              isMockMode: true // uses mock/json transport in non-production environments
+            }).catch(() => {});
+            remindersSent++;
+          }
+        } catch {
+          // ignore email dispatch errors during batch
+        }
+
+        task.remindedAt = new Date();
+      }
 
       // 2. Trigger Telephony Automated Phone Call alert if task due time is completed
       if (isOverdue) {
         await makeTaskDueCall({ user: recipientUser, task }).catch(() => {});
-        // Dispatch WhatsApp notification to Admin that task due time is completed and overdue
+        // Dispatch WhatsApp notification to Admin & Assignee that task due time is completed and overdue
         if (!task.whatsappDueNotifiedAt) {
           await notifyAdminTaskOverdue(task, task.organization._id || task.organization).catch(() => {});
+          if (recipientUser.phone) {
+            const assigneeMsg = `🚨 *TaskMate URGENT: Task Due Time Completed!*\n\n` +
+              `Hi ${recipientUser.name || 'there'}!\n` +
+              `*Task:* ${task.title}\n` +
+              `*Scheduled Due:* ${task.dueDateString || ''} ${task.dueTime || ''}\n` +
+              `*Status:* NOT FINISHED\n\n` +
+              `⚠️ The deadline for your assigned task has passed. Please complete or update status in TaskMate immediately.`;
+            await sendAdminWhatsAppMessage({
+              organizationId: task.organization._id || task.organization,
+              eventType: 'task_overdue',
+              message: assigneeMsg,
+              task,
+              recipientPhone: recipientUser.phone
+            }).catch(() => {});
+          }
           task.whatsappDueNotifiedAt = new Date();
         }
-      }
-
-      // 3. Dispatch WhatsApp 30-minute warning to Admin if deadline is within next 45 minutes
-      const timeDiffMinutes = (new Date(task.dueDate).getTime() - now.getTime()) / (60 * 1000);
-      if (timeDiffMinutes > 0 && timeDiffMinutes <= 45 && !task.whatsapp30MinNotifiedAt) {
-        await notifyAdmin30MinWarning(task, task.organization._id || task.organization).catch(() => {});
-        task.whatsapp30MinNotifiedAt = new Date();
-      }
-
-      // 4. Dispatch Email Alert (Non-blocking)
-      try {
-        if (recipientUser.email) {
-          await sendOtpEmail({
-            to: recipientUser.email,
-            name: recipientUser.name,
-            otp: 'DEADLINE',
-            purpose: 'login',
-            isMockMode: true // uses mock/json transport in non-production environments
-          }).catch(() => {});
-          remindersSent++;
+        // Dispatch Email notification that task due time is completed and overdue
+        if (!task.emailDueNotifiedAt) {
+          await notifyTaskOverdueEmail(task, task.organization._id || task.organization).catch(() => {});
+          task.emailDueNotifiedAt = new Date();
         }
-      } catch {
-        // ignore email dispatch errors during batch
       }
 
-      // 3. Mark task as reminded
-      task.remindedAt = new Date();
+      // 3. Dispatch WhatsApp and Email 30-minute warning if deadline is within next 45 minutes
+      const timeDiffMinutes = (new Date(task.dueDate).getTime() - now.getTime()) / (60 * 1000);
+      if (timeDiffMinutes > 0 && timeDiffMinutes <= 45) {
+        if (!task.whatsapp30MinNotifiedAt) {
+          await notifyAdmin30MinWarning(task, task.organization._id || task.organization).catch(() => {});
+          if (recipientUser.phone) {
+            const warningMsg = `⏰ *TaskMate Reminder: 30 Minutes Remaining!*\n\n` +
+              `Hi ${recipientUser.name || 'there'}!\n` +
+              `*Task:* ${task.title}\n` +
+              `*Due in 30 minutes at:* ${task.dueTime || 'Upcoming'} today\n\n` +
+              `⚠️ Please finish and submit your assigned task before the scheduled deadline.`;
+            await sendAdminWhatsAppMessage({
+              organizationId: task.organization._id || task.organization,
+              eventType: 'task_due_soon_30m',
+              message: warningMsg,
+              task,
+              recipientPhone: recipientUser.phone
+            }).catch(() => {});
+          }
+          task.whatsapp30MinNotifiedAt = new Date();
+        }
+        if (!task.email30MinNotifiedAt) {
+          await notifyTask30MinWarningEmail(task, task.organization._id || task.organization).catch(() => {});
+          task.email30MinNotifiedAt = new Date();
+        }
+      }
+
       await task.save({ validateBeforeSave: false });
     }
 
@@ -189,20 +259,20 @@ export const scanAndDispatchReminders = async (options = {}) => {
 
 /**
  * Starts periodic reminder scheduler daemon with distributed cluster locking
- * @param {number} intervalMs - Interval between scans (default: 5 minutes)
+ * @param {number} intervalMs - Interval between scans (default: 1 minute / 60s)
  * @returns {NodeJS.Timeout}
  */
-export const startReminderDaemon = (intervalMs = 5 * 60 * 1000) => {
+export const startReminderDaemon = (intervalMs = 60 * 1000) => {
   console.log(`[ReminderDaemon] Background deadline scheduler initialized (interval: ${intervalMs / 1000}s, instance: ${instanceId})`);
   
-  // Initial immediate background check (delayed by 10s to let DB connect cleanly)
+  // Initial immediate background check (delayed by 2s to let DB connect cleanly)
   setTimeout(() => {
-    scanAndDispatchReminders({ requireLock: true }).catch((err) => {
+    scanAndDispatchReminders({ requireLock: false }).catch((err) => {
       console.warn('[ReminderDaemon] Error during initial reminder scan:', err.message);
     });
-  }, 10000);
+  }, 2000);
 
-  // Recurring cron scan
+  // Recurring cron scan (every 60 seconds)
   return setInterval(() => {
     scanAndDispatchReminders({ requireLock: true }).catch((err) => {
       console.warn('[ReminderDaemon] Error during scheduled reminder scan:', err.message);

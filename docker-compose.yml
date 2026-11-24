@@ -1,7 +1,7 @@
 version: '3.8'
 
 # ==============================================================================
-# TaskFlow SaaS — Production Container Orchestration
+# TaskMate SaaS — Production Container Orchestration
 # ==============================================================================
 
 services:
@@ -10,7 +10,7 @@ services:
   # ----------------------------------------------------------------------------
   mongo:
     image: mongo:7.0
-    container_name: taskflow_mongo
+    container_name: taskmate_mongo
     restart: unless-stopped
     command: ["--replSet", "rs0", "--bind_ip_all"]
     ports:
@@ -18,7 +18,7 @@ services:
     volumes:
       - mongo_data:/data/db
     networks:
-      - taskflow-network
+      - taskmate-network
     healthcheck:
       test: ["CMD-SHELL", "mongosh --eval 'db.runCommand({ ping: 1 })' --quiet"]
       interval: 10s
@@ -31,13 +31,13 @@ services:
   # ----------------------------------------------------------------------------
   mongo-init:
     image: mongo:7.0
-    container_name: taskflow_mongo_init
+    container_name: taskmate_mongo_init
     restart: "no"
     depends_on:
       mongo:
         condition: service_healthy
     networks:
-      - taskflow-network
+      - taskmate-network
     entrypoint:
       - bash
       - -c
@@ -58,13 +58,13 @@ services:
         '
 
   # ----------------------------------------------------------------------------
-  # 3. TaskFlow Backend API (Node.js / Express 5)
+  # 3. TaskMate Backend API (Node.js / Express 5)
   # ----------------------------------------------------------------------------
   api:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: taskflow_api
+    container_name: taskmate_api
     restart: unless-stopped
     depends_on:
       mongo:
@@ -77,14 +77,14 @@ services:
       NODE_ENV: production
       PORT: 5000
       HOST: 0.0.0.0
-      MONGODB_URI: mongodb://mongo:27017/taskflow?replicaSet=rs0&directConnection=true
+      MONGODB_URI: mongodb://mongo:27017/taskmate?replicaSet=rs0&directConnection=true
       JWT_SECRET: ${JWT_SECRET:-supersecretproductiongradejwtsecret1234567890!}
       REFRESH_JWT_SECRET: ${REFRESH_JWT_SECRET:-supersecretproductiongraderefreshsecret1234567890!}
       CSRF_SECRET: ${CSRF_SECRET:-supersecretproductiongradecsrfsecret1234567890!}
       CORS_ALLOWED_ORIGINS: http://localhost,http://127.0.0.1,http://localhost:80,http://localhost:5173
       SHUTDOWN_TIMEOUT_MS: 10000
     networks:
-      - taskflow-network
+      - taskmate-network
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:5000/api/health/live || exit 1"]
       interval: 15s
@@ -93,13 +93,13 @@ services:
       start_period: 10s
 
   # ----------------------------------------------------------------------------
-  # 4. TaskFlow Web Client & Reverse Proxy (React / Vite / Nginx)
+  # 4. TaskMate Web Client & Reverse Proxy (React / Vite / Nginx)
   # ----------------------------------------------------------------------------
   web:
     build:
       context: ./client
       dockerfile: Dockerfile
-    container_name: taskflow_web
+    container_name: taskmate_web
     restart: unless-stopped
     depends_on:
       api:
@@ -107,7 +107,7 @@ services:
     ports:
       - "80:80"
     networks:
-      - taskflow-network
+      - taskmate-network
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:80/ || exit 1"]
       interval: 15s
@@ -123,5 +123,5 @@ volumes:
     driver: local
 
 networks:
-  taskflow-network:
+  taskmate-network:
     driver: bridge

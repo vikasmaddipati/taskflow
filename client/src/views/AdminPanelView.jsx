@@ -8,22 +8,16 @@ import {
   Send,
   MessageSquare,
   Search,
-  Filter,
   RefreshCw,
   Plus,
   Phone,
-  Settings,
-  Sparkles,
-  Layers,
-  Calendar,
-  Check,
-  ChevronDown
+  Layers
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => {
-  const { currentOrg, user } = useAuth();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'tasks' | 'whatsapp'
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -193,7 +187,7 @@ export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => 
         fetchOverview();
         if (activeTab === 'tasks') fetchAdminTasks();
       }
-    } catch (err) {
+    } catch {
       if (showToast) showToast('Scan failed to complete', 'error');
     }
   };
@@ -208,7 +202,7 @@ export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => 
               <ShieldAlert className="w-7 h-7" />
             </span>
             <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Admin & TaskFlow Monitor</h1>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Admin & TaskMate Monitor</h1>
               <p className="text-slate-400 text-sm mt-0.5">
                 Centralized command center to organize tasks, track member deadlines, and manage WhatsApp alerts
               </p>
@@ -281,6 +275,30 @@ export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => 
           )}
         </button>
       </div>
+
+      {/* Error Alert with Retry */}
+      {error && (
+        <div className="p-4 bg-rose-50 dark:bg-rose-950/40 rounded-2xl border border-rose-200 dark:border-rose-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm text-rose-700 dark:text-rose-300">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={fetchOverview}
+            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold self-start sm:self-auto transition-colors"
+          >
+            Retry Loading
+          </button>
+        </div>
+      )}
+
+      {/* Loading Skeleton Indicator */}
+      {loading && !error && (
+        <div className="p-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col items-center justify-center">
+          <div className="w-8 h-8 border-3 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+          <span className="mt-3 text-xs text-slate-500">Loading admin monitoring metrics...</span>
+        </div>
+      )}
 
       {/* TAB 1: WORKFLOW OVERVIEW */}
       {activeTab === 'overview' && (
@@ -416,6 +434,55 @@ export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => 
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* Audit Trail & Recent Activity Feed */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-indigo-500" />
+                  <span>Audit Trail & Recent Activity</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Chronological record of recent task changes, assignments, and member actions
+                </p>
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg">
+                {recentActivity.length} Events
+              </span>
+            </div>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {recentActivity.length === 0 ? (
+                <div className="p-8 text-center text-sm text-slate-400">
+                  No recent activity logged yet.
+                </div>
+              ) : (
+                recentActivity.map((log, idx) => (
+                  <div key={log._id || log.id || `activity-${idx}`} className="p-4 sm:px-6 flex items-center justify-between gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                        <span className="capitalize">{log.action?.replace(/[._]/g, ' ') || 'Action'}</span>
+                        {log.actor?.name && (
+                          <span className="text-xs text-slate-400 font-normal">
+                            by {log.actor.name}
+                          </span>
+                        )}
+                      </div>
+                      {log.details?.title && (
+                        <div className="text-xs text-slate-500 truncate max-w-md">
+                          Task: {log.details.title}
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-xs text-slate-400 shrink-0">
+                      {log.createdAt ? new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

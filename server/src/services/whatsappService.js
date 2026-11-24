@@ -1,9 +1,10 @@
 import { broadcastTenantEvent } from './realtimeService.js';
 import Organization from '../models/Organization.js';
 import User from '../models/User.js';
+import { getBaileysStatus, sendBaileysNotification, hasStoredBaileysCreds, connectBaileys } from './baileysService.js';
 
 /**
- * WhatsApp Notification Service for TaskFlow
+ * WhatsApp Notification Service for TaskMate
  * Sends WhatsApp notification dispatches to the Admin / Task Organizer.
  * Supports Twilio WhatsApp API, Meta WhatsApp Cloud API, and real-time SSE stream dispatching.
  */
@@ -13,9 +14,19 @@ import User from '../models/User.js';
  */
 export const formatWhatsAppNumber = (phone) => {
   if (!phone) return null;
-  const cleaned = phone.replace(/[^\d+]/g, '');
+  let cleaned = phone.replace(/[^\d+]/g, '');
   if (!cleaned) return null;
-  if (cleaned.startsWith('+')) return cleaned;
+  if (cleaned.startsWith('+')) {
+    // If entered as +910..., strip the redundant 0
+    if (cleaned.startsWith('+910') && cleaned.length === 14) {
+      cleaned = '+91' + cleaned.slice(4);
+    }
+    return cleaned;
+  }
+  // Strip leading national trunk 0 (e.g. 09876543210 -> 9876543210)
+  if (cleaned.startsWith('0') && cleaned.length === 11) {
+    cleaned = cleaned.slice(1);
+  }
   if (cleaned.length === 10) return `+91${cleaned}`; // Default to India (+91) if 10 digits
   return `+${cleaned}`;
 };
@@ -34,8 +45,30 @@ export const sendAdminWhatsAppMessage = async ({
     let targetPhone = recipientPhone;
     let org = null;
 
-    if (organizationId) {
-      org = await Organization.findById(organizationId).populate('owner', 'phone name');
+    const orgLookupId = organizationId?._id || organizationId;
+    if (orgLookupId) {
+      org = await Organization.findById(orgLookupId).populate('owner', 'phone name');
+    }
+
+    // Check organization settings if not a test event
+    if (org && eventType !== 'test') {
+      const ws = org.whatsappSettings;
+      if (ws && ws.enabled === false) {
+        console.log(`[WhatsApp Service] Skipping ${eventType}: WhatsApp alerts disabled for org "${org.name}"`);
+        return { success: true, skipped: true, reason: 'WhatsApp alerts disabled for organization' };
+      }
+      if (eventType === 'task_assigned' && ws?.notifyOnTaskAssigned === false) {
+        return { success: true, skipped: true, reason: 'Task assignment alerts disabled' };
+      }
+      if (eventType === 'task_completed' && ws?.notifyOnTaskCompleted === false) {
+        return { success: true, skipped: true, reason: 'Task completion alerts disabled' };
+      }
+      if (eventType === 'task_due_soon_30m' && ws?.notifyBefore30Min === false) {
+        return { success: true, skipped: true, reason: '30-minute warning alerts disabled' };
+      }
+      if (eventType === 'task_overdue' && ws?.notifyOnOverdue === false) {
+        return { success: true, skipped: true, reason: 'Task overdue alerts disabled' };
+      }
     }
 
     if (!targetPhone) {
@@ -64,15 +97,47 @@ export const sendAdminWhatsAppMessage = async ({
     console.log(`[WhatsApp Service] [${eventType}] Dispatching message to ${formattedPhone || 'in-app'}: "${message}"`);
 
     // 1. Dispatch real-time SSE event to all admins/owners in the tenant for instant live feed
-    if (organizationId) {
+    if (orgLookupId) {
       try {
-        broadcastTenantEvent(organizationId.toString(), 'whatsapp.message_dispatched', payload);
+        broadcastTenantEvent(orgLookupId.toString(), 'whatsapp.message_dispatched', payload);
       } catch (sseErr) {
         console.warn('[WhatsApp Service] SSE broadcast error:', sseErr.message);
       }
     }
 
-    // 2. Twilio WhatsApp Dispatch (if configured in environment)
+    // 2. Innovatorssoft Baileys Direct WhatsApp Dispatch (if connected or has stored creds)
+    let baileysStatus = getBaileysStatus();
+    if (baileysStatus.status !== 'connected' && hasStoredBaileysCreds()) {
+      try {
+        console.log('[WhatsApp Service] Stored Baileys session exists. Auto-connecting socket...');
+        await connectBaileys();
+        for (let i = 0; i < 6; i++) {
+          await new Promise((r) => setTimeout(r, 500));
+          baileysStatus = getBaileysStatus();
+          if (baileysStatus.status === 'connected') break;
+        }
+      } catch (connErr) {
+        console.warn('[WhatsApp Service] Failed to auto-connect Baileys on demand:', connErr.message);
+      }
+    }
+
+    if (baileysStatus.status === 'connected' && formattedPhone) {
+      try {
+        const baileysRes = await sendBaileysNotification(formattedPhone, message);
+        if (baileysRes.success) {
+          return {
+            success: true,
+            channel: 'baileys_whatsapp',
+            messageId: baileysRes.messageId,
+            targetPhone: formattedPhone
+          };
+        }
+      } catch (baileysErr) {
+        console.warn('[WhatsApp Service] Baileys dispatch failed, falling back:', baileysErr.message);
+      }
+    }
+
+    // 3. Twilio WhatsApp Dispatch (if configured in environment)
     const twilioSid = process.env.TWILIO_ACCOUNT_SID;
     const twilioToken = process.env.TWILIO_AUTH_TOKEN;
     const twilioWhatsAppFrom = process.env.TWILIO_WHATSAPP_FROM || (process.env.TWILIO_PHONE_NUMBER ? `whatsapp:${process.env.TWILIO_PHONE_NUMBER}` : null);
@@ -154,7 +219,7 @@ export const notifyAdminTaskAssigned = async (task, orgId) => {
     ? `${task.dueDateString}${task.dueTime ? ' at ' + task.dueTime : ''}`
     : 'No due date';
 
-  const message = `📋 *TaskFlow Alert: Task Assigned*\n\n` +
+  const message = `📋 *TaskMate Alert: Task Assigned*\n\n` +
     `*Task:* ${task.title}\n` +
     `*Assigned to:* ${assigneeName}\n` +
     `*Due:* ${dueInfo}\n` +
@@ -179,13 +244,13 @@ export const notifyAdminTaskCompleted = async (task, orgId, actorName = 'Team Me
     : 'N/A';
 
   const message = isCompleted
-    ? `✅ *TaskFlow Alert: Task Completed*\n\n` +
+    ? `✅ *TaskMate Alert: Task Completed*\n\n` +
       `*Task:* ${task.title}\n` +
       `*Completed by:* ${actorName}\n` +
       `*Original Due:* ${dueInfo}\n` +
       `*Status:* COMPLETED\n\n` +
       `🎉 Task successfully finished on schedule.`
-    : `🔄 *TaskFlow Alert: Task Status Updated*\n\n` +
+    : `🔄 *TaskMate Alert: Task Status Updated*\n\n` +
       `*Task:* ${task.title}\n` +
       `*Updated by:* ${actorName}\n` +
       `*New Status:* ${task.status.toUpperCase()}\n` +
@@ -206,7 +271,7 @@ export const notifyAdmin30MinWarning = async (task, orgId) => {
   const assigneeName = task.assignedTo?.name || 'Unassigned';
   const timeStr = task.dueTime || 'Upcoming';
 
-  const message = `⏰ *TaskFlow Alert: 30 Minutes Remaining!*\n\n` +
+  const message = `⏰ *TaskMate Alert: 30 Minutes Remaining!*\n\n` +
     `*Task:* ${task.title}\n` +
     `*Assigned to:* ${assigneeName}\n` +
     `*Due in 30 minutes at:* ${timeStr} today\n` +
@@ -230,7 +295,7 @@ export const notifyAdminTaskOverdue = async (task, orgId) => {
     ? `${task.dueDateString}${task.dueTime ? ' at ' + task.dueTime : ''}`
     : 'Passed';
 
-  const message = `🚨 *TaskFlow URGENT: Task Due Time Completed!*\n\n` +
+  const message = `🚨 *TaskMate URGENT: Task Due Time Completed!*\n\n` +
     `*Task:* ${task.title}\n` +
     `*Assigned to:* ${assigneeName}\n` +
     `*Scheduled Due:* ${dueInfo}\n` +

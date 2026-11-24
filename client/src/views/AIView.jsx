@@ -1,13 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkles,
   Send,
   Calendar,
-  Clock,
   CheckCircle2,
-  AlertTriangle,
   ArrowRight,
-  ListTodo,
   Layers,
   Bot,
   User,
@@ -16,8 +13,6 @@ import {
   Plus,
   Sliders,
   Check,
-  ChevronRight,
-  Trash2,
   Lightbulb
 } from 'lucide-react';
 import api from '../services/api';
@@ -30,7 +25,7 @@ export const AIView = ({ onTaskCreated, onNavigate, showToast }) => {
     {
       id: 'welcome',
       sender: 'ai',
-      text: `👋 Hello! I am your **TaskFlow AI Assistant**.\n\nYou can ask me to schedule tasks in plain English (e.g. *"Schedule client review meeting tomorrow at 3pm high priority"*), plan your day, optimize deadlines, or break down large projects into manageable milestones.`,
+      text: `👋 Hello! I am your **TaskMate AI Assistant**.\n\nYou can ask me to schedule tasks in plain English (e.g. *"Schedule client review meeting tomorrow at 3pm high priority"*), plan your day, optimize deadlines, or break down large projects into manageable milestones.`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       suggestedReplies: [
         '📅 Plan my day',
@@ -66,14 +61,7 @@ export const AIView = ({ onTaskCreated, onNavigate, showToast }) => {
     messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' });
   }, [messages]);
 
-  // Load schedule optimizer data when tab switches to optimizer
-  useEffect(() => {
-    if (activeTab === 'optimizer' && !optimizationData) {
-      loadOptimization();
-    }
-  }, [activeTab]);
-
-  const loadOptimization = async () => {
+  const loadOptimization = useCallback(async () => {
     try {
       setIsLoadingOptimizer(true);
       const res = await api.post('/v1/ai/optimize', { apply: false });
@@ -88,7 +76,14 @@ export const AIView = ({ onTaskCreated, onNavigate, showToast }) => {
     } finally {
       setIsLoadingOptimizer(false);
     }
-  };
+  }, [showToast]);
+
+  // Load schedule optimizer data when tab switches to optimizer
+  useEffect(() => {
+    if (activeTab === 'optimizer' && !optimizationData) {
+      loadOptimization();
+    }
+  }, [activeTab, optimizationData, loadOptimization]);
 
   const handleApplyOptimization = async () => {
     try {
@@ -287,7 +282,7 @@ export const AIView = ({ onTaskCreated, onNavigate, showToast }) => {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-xs font-medium text-indigo-200 border border-white/20 mb-3">
               <Sparkles className="w-3.5 h-3.5 text-indigo-300" />
-              <span>TaskFlow AI Copilot & Scheduler</span>
+              <span>TaskMate AI Copilot & Scheduler</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">AI Task Manager</h1>
             <p className="text-indigo-200 text-sm mt-1 max-w-xl">
@@ -296,10 +291,10 @@ export const AIView = ({ onTaskCreated, onNavigate, showToast }) => {
           </div>
 
           {/* Quick Tabs */}
-          <div className="flex flex-wrap gap-2 bg-white/10 backdrop-blur-md p-1.5 rounded-xl border border-white/15">
+          <div className="flex overflow-x-auto whitespace-nowrap scrollbar-none gap-2 bg-white/10 backdrop-blur-md p-1.5 rounded-xl border border-white/15 max-w-full">
             <button
               onClick={() => setActiveTab('chat')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
+              className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
                 activeTab === 'chat'
                   ? 'bg-white text-indigo-950 shadow-md font-semibold'
                   : 'text-white/80 hover:text-white hover:bg-white/5'
@@ -310,7 +305,7 @@ export const AIView = ({ onTaskCreated, onNavigate, showToast }) => {
             </button>
             <button
               onClick={() => setActiveTab('scheduler')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
+              className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
                 activeTab === 'scheduler'
                   ? 'bg-white text-indigo-950 shadow-md font-semibold'
                   : 'text-white/80 hover:text-white hover:bg-white/5'
@@ -321,7 +316,7 @@ export const AIView = ({ onTaskCreated, onNavigate, showToast }) => {
             </button>
             <button
               onClick={() => setActiveTab('optimizer')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
+              className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
                 activeTab === 'optimizer'
                   ? 'bg-white text-indigo-950 shadow-md font-semibold'
                   : 'text-white/80 hover:text-white hover:bg-white/5'
@@ -332,7 +327,7 @@ export const AIView = ({ onTaskCreated, onNavigate, showToast }) => {
             </button>
             <button
               onClick={() => setActiveTab('breakdown')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
+              className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
                 activeTab === 'breakdown'
                   ? 'bg-white text-indigo-950 shadow-md font-semibold'
                   : 'text-white/80 hover:text-white hover:bg-white/5'
@@ -347,7 +342,7 @@ export const AIView = ({ onTaskCreated, onNavigate, showToast }) => {
 
       {/* TAB 1: AI CHAT & COPILOT */}
       {activeTab === 'chat' && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-[650px] overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-[calc(100vh-280px)] min-h-[500px] max-h-[750px] overflow-hidden">
           {/* Chat Stream */}
           <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4">
             {messages.map((msg) => (
@@ -376,7 +371,7 @@ export const AIView = ({ onTaskCreated, onNavigate, showToast }) => {
                       : 'bg-slate-100 dark:bg-slate-800/70 text-slate-800 dark:text-slate-100 rounded-tl-xs border border-slate-200/60 dark:border-slate-700/60'
                   }`}
                 >
-                  <div className="whitespace-pre-line">{msg.text}</div>
+                  <div className="whitespace-pre-line break-words">{msg.text}</div>
 
                   {/* Embedded Task Card (if task was created) */}
                   {msg.task && (
@@ -497,7 +492,7 @@ export const AIView = ({ onTaskCreated, onNavigate, showToast }) => {
                   <span className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce" />
                   <span className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.2s]" />
                   <span className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.4s]" />
-                  <span className="ml-2 font-medium text-slate-600 dark:text-slate-300">TaskFlow AI is reasoning & scheduling...</span>
+                  <span className="ml-2 font-medium text-slate-600 dark:text-slate-300">TaskMate AI is reasoning & scheduling...</span>
                 </div>
               </div>
             )}
@@ -653,7 +648,7 @@ export const AIView = ({ onTaskCreated, onNavigate, showToast }) => {
               ) : (
                 <div className="h-44 flex flex-col items-center justify-center text-center text-slate-400 p-4 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl">
                   <Lightbulb className="w-8 h-8 mb-2 opacity-50 text-indigo-500" />
-                  <p className="text-xs">Type in the left box to preview how TaskFlow AI parses your task in real time.</p>
+                  <p className="text-xs">Type in the left box to preview how TaskMate AI parses your task in real time.</p>
                 </div>
               )}
             </div>

@@ -1,5 +1,5 @@
 # ==============================================================================
-# TaskFlow Backend — Production Multi-Stage Container Image
+# TaskMate Backend — Production Multi-Stage Container Image
 # ==============================================================================
 
 # Stage 1: Dependency Installation

@@ -1,4 +1,4 @@
-// TaskFlow — Production Infrastructure & DevOps Verification Suite (Audit Section 9)
+// TaskMate — Production Infrastructure & DevOps Verification Suite (Audit Section 9)
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -37,7 +37,7 @@ async function request(endpoint, options = {}) {
 
 async function runDevOpsTests() {
   console.log('================================================================');
-  console.log('   TaskFlow Production Infrastructure & DevOps Suite (Sec 9)    ');
+  console.log('   TaskMate Production Infrastructure & DevOps Suite (Sec 9)    ');
   console.log('================================================================\n');
 
   let passed = 0;
@@ -117,8 +117,8 @@ async function runDevOpsTests() {
     const composeContent = fs.readFileSync(composePath, 'utf8');
     assert(composeContent.includes('--replSet') && composeContent.includes('rs0'), 'docker-compose.yml configures MongoDB replica set for ACID transactions');
     assert(composeContent.includes('mongo-init'), 'docker-compose.yml includes replica set auto-initialization service');
-    assert(composeContent.includes('container_name: taskflow_api'), 'docker-compose.yml provisions backend API service');
-    assert(composeContent.includes('container_name: taskflow_web'), 'docker-compose.yml provisions frontend web service');
+    assert(composeContent.includes('container_name: taskmate_api'), 'docker-compose.yml provisions backend API service');
+    assert(composeContent.includes('container_name: taskmate_web'), 'docker-compose.yml provisions frontend web service');
 
     const dockerignorePath = path.join(ROOT_DIR, '.dockerignore');
     assert(fs.existsSync(dockerignorePath), 'Root .dockerignore exists to protect secrets and ignore node_modules');

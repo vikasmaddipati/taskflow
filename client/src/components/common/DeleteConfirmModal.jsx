@@ -10,17 +10,17 @@ export const DeleteConfirmModal = ({ isOpen, title, onClose, onConfirm, isDeleti
         className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden transform transition-all"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-6">
+        <div className="p-5 sm:p-6">
           <div className="flex items-start gap-4">
             <div className="p-3 bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-xl shrink-0">
               <AlertTriangle className="w-6 h-6" />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                 Delete Task
               </h3>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                Are you sure you want to delete <span className="font-semibold text-slate-800 dark:text-slate-200">"{title}"</span>? This action is permanent and cannot be undone.
+                Are you sure you want to delete <span className="font-semibold text-slate-800 dark:text-slate-200 break-words">"{title}"</span>? This action is permanent and cannot be undone.
               </p>
             </div>
             <button

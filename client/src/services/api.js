@@ -7,6 +7,11 @@ const getBaseURL = () => {
   const customUrl = localStorage.getItem('tm_api_url');
   if (customUrl) return customUrl.trim();
 
+  // Environment variable if explicitly provided
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL.trim();
+  }
+
   // Running inside Capacitor native container: connect directly to live production backend
   const isNative = typeof window !== 'undefined' && (
     Capacitor.isNativePlatform() ||
@@ -17,11 +22,6 @@ const getBaseURL = () => {
 
   if (isNative) {
     return 'https://taskflow.zerosyntax.in/api';
-  }
-
-  // Environment variable if provided
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL.trim();
   }
 
   return '/api';
@@ -65,11 +65,19 @@ api.interceptors.request.use(
     }
 
     // Attach user local IANA timezone (e.g., 'America/Los_Angeles', 'Asia/Kolkata')
+    let resolvedTz = 'Asia/Kolkata';
     try {
-      config.headers['x-timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (detected && detected !== 'UTC') {
+        resolvedTz = detected;
+      } else {
+        const offset = new Date().getTimezoneOffset();
+        if (offset === -330) resolvedTz = 'Asia/Kolkata';
+      }
     } catch {
-      config.headers['x-timezone'] = 'UTC';
+      resolvedTz = 'Asia/Kolkata';
     }
+    config.headers['x-timezone'] = resolvedTz;
 
     // Attach active organization ID if set
     const orgId = localStorage.getItem('tm_org_id');

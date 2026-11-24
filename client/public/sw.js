@@ -1,6 +1,6 @@
-// TaskFlow Production Service Worker — Offline Shell & API Cache Fallback
-const CACHE_NAME = 'taskflow-static-v4';
-const API_CACHE_NAME = 'taskflow-api-cache-v4';
+// TaskMate Production Service Worker — Offline Shell & API Cache Fallback
+const CACHE_NAME = 'taskmate-static-v5';
+const API_CACHE_NAME = 'taskmate-api-cache-v5';
 
 const STATIC_ASSETS = [
   '/',
@@ -64,7 +64,7 @@ self.addEventListener('fetch', (event) => {
           const fallbackIndex = await caches.match('/index.html');
           if (fallbackIndex) return fallbackIndex;
           return new Response(
-            '<!doctype html><html><head><meta charset="utf-8"><title>TaskFlow - Offline</title></head><body><h1>You are offline</h1><p>Please check your internet connection and reload.</p></body></html>',
+            '<!doctype html><html><head><meta charset="utf-8"><title>TaskMate - Offline</title></head><body><h1>You are offline</h1><p>Please check your internet connection and reload.</p></body></html>',
             { status: 503, headers: { 'Content-Type': 'text/html' } }
           );
         })

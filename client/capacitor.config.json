@@ -1,10 +1,14 @@
 {
-  "appId": "com.taskflow.app",
-  "appName": "TaskFlow",
+  "appId": "com.taskmate.app",
+  "appName": "TaskMate",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",
+    "cleartext": true,
     "allowNavigation": [
+      "*",
+      "localhost",
+      "taskmate.zerosyntax.in",
       "taskflow.zerosyntax.in",
       "*.zerosyntax.in"
     ]

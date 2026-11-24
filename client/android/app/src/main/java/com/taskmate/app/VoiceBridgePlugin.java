@@ -1,4 +1,4 @@
-package com.taskflow.app;
+package com.taskmate.app;
 
 import android.Manifest;
 import android.content.BroadcastReceiver;

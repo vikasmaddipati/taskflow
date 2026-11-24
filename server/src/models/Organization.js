@@ -46,7 +46,15 @@ const organizationSchema = new mongoose.Schema(
     },
     whatsappSettings: {
       adminPhone: { type: String, default: null, trim: true },
-      enabled: { type: Boolean, default: false },
+      enabled: { type: Boolean, default: true },
+      notifyOnTaskAssigned: { type: Boolean, default: true },
+      notifyOnTaskCompleted: { type: Boolean, default: true },
+      notifyBefore30Min: { type: Boolean, default: true },
+      notifyOnOverdue: { type: Boolean, default: true }
+    },
+    emailSettings: {
+      adminEmail: { type: String, default: null, trim: true },
+      enabled: { type: Boolean, default: true },
       notifyOnTaskAssigned: { type: Boolean, default: true },
       notifyOnTaskCompleted: { type: Boolean, default: true },
       notifyBefore30Min: { type: Boolean, default: true },

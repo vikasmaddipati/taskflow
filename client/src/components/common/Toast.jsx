@@ -16,7 +16,8 @@ export const Toast = ({ toast, onClose }) => {
   // Safe early return after all Hooks have been invoked
   if (!toast) return null;
 
-  const { type = 'info', message } = toast;
+  const type = typeof toast === 'object' && toast?.type ? toast.type : 'info';
+  const message = typeof toast === 'string' ? toast : toast?.message || '';
 
   const styles = {
     success: 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-200 dark:border-emerald-800',
@@ -31,17 +32,17 @@ export const Toast = ({ toast, onClose }) => {
   };
 
   return (
-    <div className="fixed bottom-[calc(1.25rem+var(--app-safe-bottom))] right-5 z-50 max-w-md animate-in fade-in slide-in-from-bottom-5 duration-200">
+    <div className="fixed bottom-[calc(1.25rem+var(--app-safe-bottom))] left-4 right-4 sm:left-auto sm:right-5 z-50 sm:max-w-md animate-in fade-in slide-in-from-bottom-5 duration-200">
       <div
         className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg backdrop-blur-sm transition-all ${
           styles[type] || styles.info
         }`}
       >
         {icons[type] || icons.info}
-        <p className="text-sm font-medium pr-2 leading-relaxed">{message}</p>
+        <p className="text-sm font-medium pr-2 leading-relaxed break-words min-w-0 flex-1">{message}</p>
         <button
           onClick={onClose}
-          className="ml-auto text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors p-1 rounded-lg"
+          className="ml-auto text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors p-1 rounded-lg shrink-0 cursor-pointer"
           aria-label="Close notification"
         >
           <X className="w-4 h-4" />

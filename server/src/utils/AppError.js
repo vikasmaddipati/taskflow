@@ -1,5 +1,5 @@
 /**
- * Standardized Operational Error Class for TaskFlow
+ * Standardized Operational Error Class for TaskMate
  */
 export class AppError extends Error {
   /**

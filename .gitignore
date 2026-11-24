@@ -39,3 +39,6 @@ deploy_staging/
 *.zip
 *.tar.gz
 *.tgz
+baileys_auth/
+*/baileys_auth/
+server/data/

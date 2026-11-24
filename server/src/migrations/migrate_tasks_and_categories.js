@@ -1,5 +1,5 @@
 /**
- * TaskFlow Database Migration: Tasks Soft-Delete & Persistent Categories
+ * TaskMate Database Migration: Tasks Soft-Delete & Persistent Categories
  *
  * Requirements:
  * 1. Safe to run against existing databases with zero downtime.

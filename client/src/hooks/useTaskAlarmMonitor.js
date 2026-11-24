@@ -139,8 +139,13 @@ export const useTaskAlarmMonitor = ({
       // 1. Precise local time evaluation
       if (task.dueDateString && task.dueTime) {
         const [y, m, d] = task.dueDateString.split('-').map(Number);
-        const [h, min] = task.dueTime.split(':').map(Number);
-        if (!isNaN(y) && !isNaN(m) && !isNaN(d) && !isNaN(h) && !isNaN(min)) {
+        const timeMatch = String(task.dueTime).trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+        if (!isNaN(y) && !isNaN(m) && !isNaN(d) && timeMatch) {
+          let h = parseInt(timeMatch[1], 10);
+          const min = parseInt(timeMatch[2], 10);
+          const meridiem = timeMatch[3]?.toUpperCase();
+          if (meridiem === 'PM' && h < 12) h += 12;
+          if (meridiem === 'AM' && h === 12) h = 0;
           const localDate = new Date(y, m - 1, d, h, min, 0, 0);
           dueTimestamp = localDate.getTime();
         }
@@ -210,8 +215,12 @@ export const useTaskAlarmMonitor = ({
         triggerIncomingCall(e.detail.task);
       }
     };
+    window.addEventListener('taskmate:phone_call', handleSseCall);
     window.addEventListener('taskflow:phone_call', handleSseCall);
-    return () => window.removeEventListener('taskflow:phone_call', handleSseCall);
+    return () => {
+      window.removeEventListener('taskmate:phone_call', handleSseCall);
+      window.removeEventListener('taskflow:phone_call', handleSseCall);
+    };
   }, [triggerIncomingCall]);
 
   return {

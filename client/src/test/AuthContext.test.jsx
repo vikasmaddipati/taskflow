@@ -18,7 +18,7 @@ vi.mock('../services/api', () => ({
 
 // Test consumer component
 const AuthConsumer = () => {
-  const { user, isAuthenticated, loading, logout, login, currentOrg } = useAuth();
+  const { user, isAuthenticated, loading, logout, login, loginWithGoogle, currentOrg } = useAuth();
 
   if (loading) return <div>Auth Loading...</div>;
 
@@ -32,6 +32,12 @@ const AuthConsumer = () => {
         data-testid="login-btn"
       >
         Login
+      </button>
+      <button
+        onClick={() => loginWithGoogle('test_google_credential_123')}
+        data-testid="google-login-btn"
+      >
+        Google Login
       </button>
       <button onClick={() => logout()} data-testid="logout-btn">
         Logout
@@ -165,5 +171,64 @@ describe('AuthContext (TDZ Regression Protection & Auth State Lifecycle)', () =>
 
     expect(screen.getByTestId('theme-value')).toHaveTextContent('light');
     expect(document.documentElement.classList.contains('dark')).toBe(false);
+  });
+
+  it('authenticates with Google credential and populates session tokens and organizations', async () => {
+    const user = userEvent.setup();
+
+    // Initial check is unauthenticated
+    api.get.mockRejectedValueOnce({
+      response: { status: 401, data: { message: 'Not authenticated' } }
+    });
+
+    // Mock Google auth response
+    api.post.mockResolvedValueOnce({
+      data: {
+        success: true,
+        token: 'mock-google-jwt-access-token',
+        refreshToken: 'mock-google-refresh-token',
+        csrfToken: 'mock-csrf-token',
+        user: {
+          id: 'u-google-456',
+          name: 'Google User',
+          email: 'google.user@example.com',
+          isEmailVerified: true
+        },
+        organization: {
+          _id: 'org-google-1',
+          name: "Google User's Workspace"
+        }
+      }
+    });
+
+    // Mock organizations and workspaces requests following login
+    api.get.mockResolvedValue({
+      data: {
+        success: true,
+        organizations: [{ _id: 'org-google-1', name: "Google User's Workspace", role: 'owner' }],
+        workspaces: [{ _id: 'ws-google-1', name: 'General', isDefault: true }]
+      }
+    });
+
+    renderWithProviders(<AuthConsumer />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-status')).toHaveTextContent('Guest');
+    });
+
+    const googleBtn = screen.getByTestId('google-login-btn');
+    await user.click(googleBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-status')).toHaveTextContent('Authenticated');
+    });
+
+    expect(api.post).toHaveBeenCalledWith('/auth/google', {
+      credential: 'test_google_credential_123'
+    });
+    expect(screen.getByTestId('user-email')).toHaveTextContent('google.user@example.com');
+    expect(screen.getByTestId('org-name')).toHaveTextContent("Google User's Workspace");
+    expect(localStorage.getItem('tm_token')).toBe('mock-google-jwt-access-token');
+    expect(localStorage.getItem('tm_refresh_token')).toBe('mock-google-refresh-token');
   });
 });

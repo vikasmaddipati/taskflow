@@ -1,4 +1,4 @@
-// TaskFlow — Systemic Gaps Audit Extension Verification Suite
+// TaskMate — Systemic Gaps Audit Extension Verification Suite
 // Validates: Subtasks, Attachments, Activity Log, Recurring Tasks, Notifications & Reminders, and Kanban Status Transitions.
 import { spawn } from 'child_process';
 import path from 'path';
@@ -36,7 +36,7 @@ async function request(endpoint, options = {}) {
 
 async function runSystemicGapsTests() {
   console.log('================================================================');
-  console.log('   TaskFlow Systemic Gaps & Feature Inventory Verification     ');
+  console.log('   TaskMate Systemic Gaps & Feature Inventory Verification     ');
   console.log('================================================================\n');
 
   let passed = 0;
@@ -168,7 +168,7 @@ async function runSystemicGapsTests() {
     console.log('\n--- TEST GROUP 2: Attachments & File Storage ---');
 
     // Upload attachment via base64 fallback
-    const sampleContent = Buffer.from('TaskFlow Architecture Whitepaper Specification v2.0').toString('base64');
+    const sampleContent = Buffer.from('TaskMate Architecture Whitepaper Specification v2.0').toString('base64');
     const attachRes = await request(`/api/v1/tasks/${taskId}/attachments`, {
       method: 'POST',
       headers: authHeaders,

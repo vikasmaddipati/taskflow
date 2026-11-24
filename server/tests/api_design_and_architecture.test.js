@@ -1,4 +1,4 @@
-// TaskFlow — API Design & Architectural Hardening Verification Suite
+// TaskMate — API Design & Architectural Hardening Verification Suite
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -35,7 +35,7 @@ async function request(endpoint, options = {}) {
 
 async function runApiDesignTests() {
   console.log('================================================================');
-  console.log('   TaskFlow API Design & Architectural Hardening Verification   ');
+  console.log('   TaskMate API Design & Architectural Hardening Verification   ');
   console.log('================================================================\n');
 
   let passed = 0;

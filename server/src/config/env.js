@@ -107,8 +107,8 @@ export const config = {
     accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
     refreshSecret: process.env.JWT_REFRESH_SECRET || '',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
-    issuer: 'taskflow-auth-service',
-    audience: 'taskflow-client'
+    issuer: 'taskmate-auth-service',
+    audience: 'taskmate-client'
   },
   cors: {
     clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
@@ -126,8 +126,8 @@ export const config = {
     secure: process.env.SMTP_SECURE === 'true',
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
-    fromEmail: process.env.FROM_EMAIL || 'noreply@taskflow.dev',
-    fromName: process.env.FROM_NAME || 'TaskFlow Security'
+    fromEmail: process.env.FROM_EMAIL || 'noreply@taskmate.dev',
+    fromName: process.env.FROM_NAME || 'TaskMate Security'
   },
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY || '',

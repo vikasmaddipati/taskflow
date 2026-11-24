@@ -2,8 +2,8 @@ import React from 'react';
 import {
   Check,
   Calendar,
+  CalendarPlus,
   Tag,
-  Clock,
   Edit3,
   Trash2,
   AlertCircle,
@@ -11,6 +11,7 @@ import {
   Repeat,
   Paperclip
 } from 'lucide-react';
+import { openInGoogleCalendar } from '../../utils/calendarUtils';
 
 export const TaskItem = ({
   task,
@@ -244,6 +245,15 @@ export const TaskItem = ({
 
       {/* Right section: Action Buttons */}
       <div className="flex items-center gap-1.5 self-end sm:self-center mt-3 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800 w-full sm:w-auto justify-end">
+        <button
+          type="button"
+          onClick={() => openInGoogleCalendar(task)}
+          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition-colors"
+          title="Add to Google Calendar"
+        >
+          <CalendarPlus className="w-4 h-4" />
+        </button>
+
         {onEdit && (
           <button
             type="button"

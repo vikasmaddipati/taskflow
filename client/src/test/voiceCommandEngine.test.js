@@ -27,16 +27,58 @@ describe('Voice Command Engine (Human Conversational Wake Word, Intent Parsing &
   });
 
   describe('extractWakeCommand', () => {
-    it('extracts inline command after "Task Flow"', () => {
-      const res = extractWakeCommand('Task Flow create task buy milk', true);
-      expect(res).toEqual({ woke: true, wakeOnly: false, command: 'create task buy milk' });
+    it('extracts inline command after "Mate", "Task Mate", and "Task Flow"', () => {
+      const res0 = extractWakeCommand('Mate create task buy milk', true);
+      expect(res0).toEqual({ woke: true, wakeOnly: false, command: 'create task buy milk' });
+
+      const res1 = extractWakeCommand('Task Flow create task buy milk', true);
+      expect(res1).toEqual({ woke: true, wakeOnly: false, command: 'create task buy milk' });
+
+      const res2 = extractWakeCommand('Task Mate create task buy milk', true);
+      expect(res2).toEqual({ woke: true, wakeOnly: false, command: 'create task buy milk' });
     });
 
-    it('supports "Hey TaskFlow," and wake-only activation', () => {
+    it('supports "Hey Mate,", "Hey TaskMate,", and wake-only activation', () => {
+      expect(extractWakeCommand('Hey Mate, schedule meeting tomorrow at 3pm', true)).toEqual({
+        woke: true,
+        wakeOnly: false,
+        command: 'schedule meeting tomorrow at 3pm'
+      });
+
+      expect(extractWakeCommand('Mate', true)).toEqual({
+        woke: true,
+        wakeOnly: true,
+        command: ''
+      });
+
+      expect(extractWakeCommand('Hey Mate', true)).toEqual({
+        woke: true,
+        wakeOnly: true,
+        command: ''
+      });
+
+      expect(extractWakeCommand('Ok Mate', true)).toEqual({
+        woke: true,
+        wakeOnly: true,
+        command: ''
+      });
+
       expect(extractWakeCommand('Hey TaskFlow, schedule meeting tomorrow at 3pm', true)).toEqual({
         woke: true,
         wakeOnly: false,
         command: 'schedule meeting tomorrow at 3pm'
+      });
+
+      expect(extractWakeCommand('Hey TaskMate, schedule meeting tomorrow at 3pm', true)).toEqual({
+        woke: true,
+        wakeOnly: false,
+        command: 'schedule meeting tomorrow at 3pm'
+      });
+
+      expect(extractWakeCommand('Task Mate', true)).toEqual({
+        woke: true,
+        wakeOnly: true,
+        command: ''
       });
 
       expect(extractWakeCommand('Task Flow', true)).toEqual({

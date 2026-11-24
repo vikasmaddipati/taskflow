@@ -1,6 +1,6 @@
 import api from './api';
 
-const WAKE_PHRASES = '(?:task\\s*flow|taskflow|task\\s*flo|tasks\\s*flow|tasked\\s*flow|task\\s*low|task\\s*follow|task\\s*floor|task\\s*four|task\\s*for|task\\s*slow|task\\s*glow|task\\s*blow|task\\s*float|task\\s*flaw|task\\s*full|task\\s*show|task\\s*throw|task\\s*though|task\\s*below|task\\s*hello|task\\s*fellow|task\\s*go|task\\s*no|task\\s*off|ask\\s*flow|desk\\s*flow|test\\s*flow|tax\\s*flow|that\\s*flow|the\\s*flow|talk\\s*flow|touch\\s*flow|toss\\s*flow|top\\s*flow|fast\\s*flow|past\\s*flow|pass\\s*flow|last\\s*flow|tusk\\s*flow|tech\\s*flow|text\\s*flow|tack\\s*flow|take\\s*flow)';
+const WAKE_PHRASES = '(?:mate|meat|task\\s*mate|taskmate|task\\s*meat|tasks\\s*mate|tasked\\s*mate|task\\s*late|task\\s*make|task\\s*main|task\\s*meet|task\\s*met|task\\s*date|task\\s*rate|task\\s*state|task\\s*weight|task\\s*eight|task\\s*bait|ask\\s*mate|desk\\s*mate|test\\s*mate|tax\\s*mate|that\\s*mate|the\\s*mate|talk\\s*mate|touch\\s*mate|toss\\s*mate|top\\s*mate|fast\\s*mate|past\\s*mate|pass\\s*mate|last\\s*mate|tusk\\s*mate|tech\\s*mate|text\\s*mate|tack\\s*mate|take\\s*mate|task\\s*flow|taskflow|task\\s*flo|tasks\\s*flow|tasked\\s*flow|task\\s*low|task\\s*follow|task\\s*floor|task\\s*four|task\\s*for|task\\s*slow|task\\s*glow|task\\s*blow|task\\s*float|task\\s*flaw|task\\s*full|task\\s*show|task\\s*throw|task\\s*though|task\\s*below|task\\s*hello|task\\s*fellow|task\\s*go|task\\s*no|task\\s*off|ask\\s*flow|desk\\s*flow|test\\s*flow|tax\\s*flow|that\\s*flow|the\\s*flow|talk\\s*flow|touch\\s*flow|toss\\s*flow|top\\s*flow|fast\\s*flow|past\\s*flow|pass\\s*flow|last\\s*flow|tusk\\s*flow|tech\\s*flow|text\\s*flow|tack\\s*flow|take\\s*flow)';
 const WAKE_WORD_REGEX = new RegExp(`^(?:(?:hey|ok|okay|hi|hello)\\s+)?${WAKE_PHRASES}(?:\\s*[,.:;!?-]|\\s+(?:please|can you|could you)\\b)?\\s*`, 'i');
 const WAKE_CONTAINS_REGEX = new RegExp(`\\b${WAKE_PHRASES}\\b`, 'i');
 
@@ -29,10 +29,13 @@ const isBroadTaskWord = (w) =>
   ['ask', 'desk', 'test', 'tax', 'that', 'talk', 'touch', 'toss', 'top', 'fast', 'past', 'pass', 'last', 'cast', 'dash', 'tech', 'text', 'tack', 'take', 'tough'].includes(w);
 
 const isStrictFlowWord = (w) =>
+  levenshtein(w, 'mate') <= 1 || w === 'meet' || w === 'meat' || w === 'met' || w === 'make' ||
   levenshtein(w, 'flow') <= 1 || w === 'floe' || w === 'flo';
 
 const isBroadFlowWord = (w) =>
   isStrictFlowWord(w) ||
+  levenshtein(w, 'mate') <= 2 ||
+  ['main', 'late', 'date', 'rate', 'state', 'eight', 'weight', 'bait'].includes(w) ||
   levenshtein(w, 'flow') <= 2 ||
   ['for', 'four', 'floor', 'follow', 'full', 'show', 'throw', 'though', 'below', 'hello', 'fellow', 'float', 'go', 'no', 'off'].includes(w);
 
@@ -41,7 +44,10 @@ const matchFuzzyWakeWord = (candidate) => {
   for (let i = 0; i < words.length; i += 1) {
     const w1 = words[i].toLowerCase().replace(/[^a-z]/g, '');
     if (!w1) continue;
-    if (w1.length >= 6 && (levenshtein(w1, 'taskflow') <= 2 || w1.startsWith('taskfl') || w1.startsWith('tasklo') || w1 === 'taskfollow' || w1 === 'taskfloor')) {
+    if (w1 === 'mate' || w1 === 'meat' || (w1.length === 4 && levenshtein(w1, 'mate') <= 1)) {
+      return words.slice(i + 1).join(' ');
+    }
+    if (w1.length >= 6 && (levenshtein(w1, 'taskmate') <= 2 || levenshtein(w1, 'taskflow') <= 2 || w1.startsWith('taskma') || w1.startsWith('taskme') || w1.startsWith('taskfl') || w1.startsWith('tasklo') || w1 === 'taskfollow' || w1 === 'taskfloor')) {
       return words.slice(i + 1).join(' ');
     }
     if (i + 1 < words.length) {
@@ -89,36 +95,36 @@ const VIEW_ALIASES = [
 
 export const VOICE_COMMAND_EXAMPLES = [
   { group: 'Tasks, Subtasks & Comments', examples: [
-    'Task Flow, I need to finish the Python report tomorrow high priority',
-    'Task Flow, schedule a task name PYTHON',
-    'Task Flow, I finished Python',
-    'Task Flow, reschedule Python to Friday',
-    'Task Flow, add subtask write unit tests to Python',
-    'Task Flow, add comment waiting for review to Python'
+    'Mate, I need to finish the Python report tomorrow high priority',
+    'Mate, schedule a task name PYTHON',
+    'Mate, I finished Python',
+    'Mate, reschedule Python to Friday',
+    'Mate, add subtask write unit tests to Python',
+    'Mate, add comment waiting for review to Python'
   ] },
   { group: 'AI & Daily Check-ins', examples: [
-    'Task Flow, what do I have today',
-    'Task Flow, what is upcoming',
-    'Task Flow, am I behind on anything',
-    'Task Flow, plan my day',
-    'Task Flow, optimize schedule',
-    'Task Flow, break down launch marketing campaign'
+    'Mate, what do I have today',
+    'Mate, what is upcoming',
+    'Mate, am I behind on anything',
+    'Mate, plan my day',
+    'Mate, optimize schedule',
+    'Mate, break down launch marketing campaign'
   ] },
   { group: 'Navigation, Board & Bulk Actions', examples: [
-    'Task Flow, open kanban board',
-    'Task Flow, move Python to in progress',
-    'Task Flow, complete all overdue tasks',
-    'Task Flow, permanently delete Python',
-    'Task Flow, read details of Python',
-    'Task Flow, open ai copilot'
+    'Mate, open kanban board',
+    'Mate, move Python to in progress',
+    'Mate, complete all overdue tasks',
+    'Mate, permanently delete Python',
+    'Mate, read details of Python',
+    'Mate, open ai copilot'
   ] },
   { group: 'Team, Billing, Settings & Workspaces', examples: [
-    'Task Flow, list team members',
-    'Task Flow, invite alex@company.com as admin',
-    'Task Flow, what plan am I on',
-    'Task Flow, list active sessions',
-    'Task Flow, switch workspace General',
-    'Task Flow, export tasks as csv'
+    'Mate, list team members',
+    'Mate, invite alex@company.com as admin',
+    'Mate, what plan am I on',
+    'Mate, list active sessions',
+    'Mate, switch workspace General',
+    'Mate, export tasks as csv'
   ] }
 ];
 
@@ -334,7 +340,7 @@ export const parseTaskPromptLocal = (prompt) => {
 
   return {
     title,
-    description: `Created via TaskFlow Voice Assistant: "${cleanPrompt}"`,
+    description: `Created via TaskMate Voice Assistant: "${cleanPrompt}"`,
     priority,
     category,
     dueDate: dateMatched ? targetDate.toISOString() : null,
@@ -957,14 +963,14 @@ export const executeVoiceIntent = async (intent, ctx) => {
 
     case 'SMALL_TALK_IDENTITY':
       return {
-        speech: "I'm TaskFlow, your personal voice assistant. Tell me to schedule tasks, check your day, or open any screen.",
+        speech: "I'm TaskMate, your personal voice assistant. Tell me to schedule tasks, check your day, or open any screen.",
         toastType: 'info',
         keepListening: true
       };
 
     case 'SMALL_TALK_THANKS':
       return {
-        speech: "You're welcome! Just say Task Flow whenever you need me.",
+        speech: "You're welcome! Just say Mate whenever you need me.",
         toastType: 'info',
         keepListening: false
       };
@@ -1159,7 +1165,7 @@ export const executeVoiceIntent = async (intent, ctx) => {
       const blobUrl = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.setAttribute('download', `taskflow-tasks.${intent.format}`);
+      link.setAttribute('download', `taskmate-tasks.${intent.format}`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -2150,7 +2156,7 @@ export const advanceTaskConversation = async (convState, rawReply, ctx = {}) => 
 
       const payload = {
         title: draft.title,
-        description: draft.customDescription || `Created via TaskFlow Voice Assistant`,
+        description: draft.customDescription || `Created via TaskMate Voice Assistant`,
         priority: draft.priority || 'medium',
         category: draft.category || 'General',
         dueDate: draft.dueDate || undefined,

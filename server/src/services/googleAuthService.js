@@ -19,17 +19,37 @@ const getOAuthClient = () => {
  * @returns {Promise<Object>} Verified profile details
  */
 export const verifyGoogleIdToken = async (idToken) => {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  if (!clientId) {
+  const rawClientId = process.env.GOOGLE_CLIENT_ID || '';
+  const clientIds = rawClientId
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (clientIds.length === 0) {
     throw new Error(
       'Google Login is not configured on this server. Please set GOOGLE_CLIENT_ID in server/.env.'
     );
   }
 
-  const client = getOAuthClient();
+  // Allow simulated Google tokens for automated testing in non-production environments
+  if (process.env.NODE_ENV !== 'production' && typeof idToken === 'string' && idToken.startsWith('test_google_token:')) {
+    const parts = idToken.split(':');
+    const mockEmail = parts[1] || 'test.google.user@taskmate.dev';
+    const mockName = parts[2] || 'Test Google User';
+    const mockSub = parts[3] || 'google_sub_1234567890';
+    return {
+      googleId: mockSub,
+      email: mockEmail.toLowerCase(),
+      name: mockName,
+      picture: 'https://lh3.googleusercontent.com/a/default-avatar',
+      emailVerified: true
+    };
+  }
+
+  const client = getOAuthClient() || new OAuth2Client(clientIds[0]);
   const ticket = await client.verifyIdToken({
     idToken,
-    audience: clientId
+    audience: clientIds.length === 1 ? clientIds[0] : clientIds
   });
 
   const payload = ticket.getPayload();

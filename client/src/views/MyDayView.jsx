@@ -51,7 +51,7 @@ export const MyDayView = ({
   // Correct calendar-day comparison without timezone corruption
   const overdueTasks = tasks.filter(
     (t) =>
-      t.status === 'pending' &&
+      t.status !== 'completed' &&
       (t.dueDateString ? t.dueDateString < todayStr : t.dueDate && new Date(t.dueDate) < startOfToday)
   );
 
@@ -93,7 +93,7 @@ export const MyDayView = ({
 
       {loading ? (
         <div className="flex flex-col items-center justify-center p-12">
-          <div className="w-8 h-8 border-3 border-amber-600/30 border-t-amber-600 rounded-full animate-spin" />
+          <div className="w-8 h-8 border-[3px] border-amber-600/30 border-t-amber-600 rounded-full animate-spin" />
           <span className="mt-3 text-xs text-slate-500">Loading daily tasks...</span>
         </div>
       ) : error ? (

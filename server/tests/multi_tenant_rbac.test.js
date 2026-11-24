@@ -35,7 +35,7 @@ async function request(endpoint, options = {}) {
 
 async function runRbacTests() {
   console.log('================================================================');
-  console.log('   TaskFlow Multi-Tenant RBAC & Isolation Security Suite        ');
+  console.log('   TaskMate Multi-Tenant RBAC & Isolation Security Suite        ');
   console.log('================================================================\n');
 
   let passed = 0;

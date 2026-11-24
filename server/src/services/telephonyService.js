@@ -1,7 +1,7 @@
 import { broadcastTenantEvent } from './realtimeService.js';
 
 /**
- * Telephony & Automated Phone Call Service for TaskFlow
+ * Telephony & Automated Phone Call Service for TaskMate
  * Provides automated phone call notifications when tasks reach their due date & time.
  * Supports Twilio Voice API for real phone calls, plus real-time in-app call dispatching.
  */
@@ -30,7 +30,7 @@ export const makeTaskDueCall = async ({ user, task }) => {
           dueDateString: task.dueDateString,
           dueTime: task.dueTime
         },
-        caller: 'TaskFlow Automated Calling System',
+        caller: 'TaskMate Automated Calling System',
         timestamp: new Date().toISOString()
       });
     }
@@ -49,9 +49,9 @@ export const makeTaskDueCall = async ({ user, task }) => {
         <Response>
           <Pause length="1"/>
           <Say voice="alice" language="en-US">
-            Hello ${userName}. This is an urgent telephone call from TaskFlow. 
+            Hello ${userName}. This is an urgent telephone call from TaskMate. 
             The scheduled due date and time for your task: ${taskTitle} has completed. 
-            Please log into TaskFlow to complete or reschedule this task. 
+            Please log into TaskMate to complete or reschedule this task. 
             Thank you, and have a productive day!
           </Say>
           <Pause length="1"/>

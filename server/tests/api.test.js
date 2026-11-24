@@ -1,4 +1,4 @@
-// Comprehensive Automated Verification Suite for TaskFlow Hardened SaaS Architecture
+// Comprehensive Automated Verification Suite for TaskMate Hardened SaaS Architecture
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -35,7 +35,7 @@ async function request(endpoint, options = {}) {
 
 async function runTests() {
   console.log('================================================================');
-  console.log('   TaskFlow Production Hardening & SaaS Verification Suite       ');
+  console.log('   TaskMate Production Hardening & SaaS Verification Suite       ');
   console.log('================================================================\n');
   let passed = 0;
   let failed = 0;
@@ -447,7 +447,7 @@ async function runTests() {
     setCustomTransporter(jsonTransport);
 
     const emailDelivery = await sendOtpEmail({
-      to: 'qa.auditor@taskflow.dev',
+      to: 'qa.auditor@taskmate.dev',
       name: 'QA Auditor',
       otp: '984512',
       purpose: 'login',
@@ -474,7 +474,7 @@ async function runTests() {
     setCustomTransporter(failingTransport);
 
     const emailFailure = await sendOtpEmail({
-      to: 'invalid-gateway@taskflow.dev',
+      to: 'invalid-gateway@taskmate.dev',
       name: 'Failure Test',
       otp: '123456',
       purpose: 'reset_password'

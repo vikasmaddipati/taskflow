@@ -47,6 +47,12 @@ export const UpcomingView = ({
     };
   }, [refreshTrigger, retryCount]);
 
+  const getTomorrowStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return new Intl.DateTimeFormat('en-CA').format(d);
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Header card */}
@@ -66,9 +72,7 @@ export const UpcomingView = ({
 
         <button
           onClick={() => {
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            onOpenCreateModal({ dueDate: tomorrow.toISOString().split('T')[0] });
+            onOpenCreateModal({ dueDate: getTomorrowStr() });
           }}
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs sm:text-sm shadow-xs transition-all self-start sm:self-auto"
         >
@@ -79,7 +83,7 @@ export const UpcomingView = ({
 
       {loading ? (
         <div className="flex flex-col items-center justify-center p-12">
-          <div className="w-8 h-8 border-3 border-blue-600/30 border-t-blue-600 rounded-full animate-spin" />
+          <div className="w-8 h-8 border-[3px] border-blue-600/30 border-t-blue-600 rounded-full animate-spin" />
           <span className="mt-3 text-xs text-slate-500">Loading upcoming tasks...</span>
         </div>
       ) : error ? (
@@ -99,9 +103,7 @@ export const UpcomingView = ({
           description="Tasks with future due dates will appear here chronologically."
           actionText="Plan a Task"
           onAction={() => {
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            onOpenCreateModal({ dueDate: tomorrow.toISOString().split('T')[0] });
+            onOpenCreateModal({ dueDate: getTomorrowStr() });
           }}
         />
       ) : (

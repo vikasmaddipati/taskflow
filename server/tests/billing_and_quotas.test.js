@@ -38,7 +38,7 @@ async function request(endpoint, options = {}) {
 
 async function runBillingTests() {
   console.log('================================================================');
-  console.log('   TaskFlow SaaS Monetization, Billing & Quotas Test Suite      ');
+  console.log('   TaskMate SaaS Monetization, Billing & Quotas Test Suite      ');
   console.log('================================================================\n');
 
   let passed = 0;

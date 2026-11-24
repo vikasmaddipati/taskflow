@@ -16,10 +16,12 @@ import {
   UploadCloud,
   MessageSquare,
   Send,
-  Edit2
+  Edit2,
+  CalendarPlus
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
+import { openInGoogleCalendar } from '../../utils/calendarUtils';
 
 const CATEGORY_SUGGESTIONS = ['Work', 'Personal', 'Study', 'Urgent', 'Health', 'Project'];
 
@@ -123,19 +125,14 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
         }
       }
       setDueDate(dateVal);
-      let timeVal = task.dueTime || '';
-      if (!timeVal && task.dueDate) {
-        try {
-          const d = new Date(task.dueDate);
-          if (!isNaN(d.getTime())) {
-            const h = String(d.getHours()).padStart(2, '0');
-            const m = String(d.getMinutes()).padStart(2, '0');
-            if (h !== '00' || m !== '00') {
-              timeVal = `${h}:${m}`;
-            }
-          }
-        } catch {
-          // ignore
+      let timeVal = '';
+      if (task.dueTime && typeof task.dueTime === 'string') {
+        const trimmed = task.dueTime.trim();
+        const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
+        if (match) {
+          timeVal = `${match[1].padStart(2, '0')}:${match[2]}`;
+        } else {
+          timeVal = trimmed;
         }
       }
       setDueTime(timeVal);
@@ -387,28 +384,53 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
   const subtaskPercent = subtasks.length > 0 ? Math.round((completedSubtasksCount / subtasks.length) * 100) : 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
       <div
         className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden transform transition-all flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-            {task ? 'Edit Task' : 'Create New Task'}
-          </h2>
-          <button
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-base sm:text-lg font-semibold text-slate-800 dark:text-slate-100">
+              {task ? 'Edit Task' : 'Create New Task'}
+            </h2>
+            {task && (
+              <button
+                type="button"
+                onClick={() => openInGoogleCalendar(task)}
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-all border border-blue-200 dark:border-blue-900"
+                title="Add to Google Calendar"
+              >
+                <CalendarPlus className="w-3.5 h-3.5" />
+                <span>Google Calendar</span>
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {task && (
+              <button
+                type="button"
+                onClick={() => openInGoogleCalendar(task)}
+                className="sm:hidden p-1.5 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-lg transition-all"
+                title="Add to Google Calendar"
+              >
+                <CalendarPlus className="w-4 h-4" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Tabs if editing existing task */}
         {task && (
-          <div className="flex items-center border-b border-slate-100 dark:border-slate-800 px-6 gap-2 bg-slate-50/50 dark:bg-slate-850/50 shrink-0 text-xs font-semibold">
+          <div className="flex items-center border-b border-slate-100 dark:border-slate-800 px-4 sm:px-6 gap-1 sm:gap-2 bg-slate-50/50 dark:bg-slate-800/50 shrink-0 text-xs font-semibold overflow-x-auto whitespace-nowrap scrollbar-none">
             <button
               type="button"
               onClick={() => setActiveTab('details')}
@@ -473,7 +495,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
 
         {/* Tab 1: Details Form */}
         {activeTab === 'details' && (
-          <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
+          <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
             {error && (
               <div className="flex items-center gap-2 p-3 text-sm text-rose-600 bg-rose-50 dark:bg-rose-950/50 dark:text-rose-300 rounded-xl border border-rose-200 dark:border-rose-900">
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -493,7 +515,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Design multi-tenant database migration"
                 disabled={isSubmitting}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-850 transition-colors"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-colors"
               />
             </div>
 
@@ -508,7 +530,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                 placeholder="Add key deliverables, acceptance criteria, or context..."
                 rows={3}
                 disabled={isSubmitting}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-850 transition-colors"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-colors"
               />
             </div>
 
@@ -734,7 +756,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                 {subtasks.length > 0 && (
                   <ul className="space-y-1.5 pt-1">
                     {subtasks.map((st) => (
-                      <li key={st._id} className="flex items-center justify-between text-xs text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-850 px-2.5 py-1.5 rounded-lg border border-slate-200/50 dark:border-slate-750">
+                      <li key={st._id} className="flex items-center justify-between text-xs text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 px-2.5 py-1.5 rounded-lg border border-slate-200/50 dark:border-slate-700">
                         <span>{st.title}</span>
                         <button
                           type="button"
@@ -766,35 +788,52 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
             </div>
 
             {/* Footer Actions */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isSubmitting}
-                className="px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="inline-flex items-center justify-center px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 rounded-xl shadow-md shadow-indigo-600/20 transition-all active:scale-95"
-              >
-                {isSubmitting ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : task ? (
-                  'Save Changes'
-                ) : (
-                  'Create Task'
+            <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div>
+                {task && (
+                  <button
+                    type="button"
+                    onClick={() => openInGoogleCalendar(task)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-xl transition-all border border-blue-200 dark:border-blue-900"
+                    title="Add this task to Google Calendar"
+                  >
+                    <CalendarPlus className="w-4 h-4" />
+                    <span className="hidden sm:inline">Add to Google Calendar</span>
+                    <span className="sm:hidden">Calendar</span>
+                  </button>
                 )}
-              </button>
+              </div>
+
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={isSubmitting}
+                  className="px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="inline-flex items-center justify-center px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 rounded-xl shadow-md shadow-indigo-600/20 transition-all active:scale-95"
+                >
+                  {isSubmitting ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : task ? (
+                    'Save Changes'
+                  ) : (
+                    'Create Task'
+                  )}
+                </button>
+              </div>
             </div>
           </form>
         )}
 
         {/* Tab 2: Subtasks Tab (Edit Mode) */}
         {activeTab === 'subtasks' && (
-          <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
             {/* Progress bar */}
             <div>
               <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -838,7 +877,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                 subtasks.map((st) => (
                   <div
                     key={st._id}
-                    className="flex items-center justify-between p-3 rounded-xl border border-slate-200/70 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 transition-colors"
+                    className="flex items-center justify-between p-3 rounded-xl border border-slate-200/70 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 transition-colors"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <button
@@ -879,9 +918,9 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
 
         {/* Tab 3: Attachments Tab (Edit Mode) */}
         {activeTab === 'attachments' && (
-          <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
             {/* Upload Box */}
-            <div className="p-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl flex flex-col items-center justify-center text-center bg-slate-50/50 dark:bg-slate-850/30">
+            <div className="p-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl flex flex-col items-center justify-center text-center bg-slate-50/50 dark:bg-slate-800/30">
               <UploadCloud className="w-8 h-8 text-indigo-500 mb-2" />
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Upload task attachment (PDF, Images, Documents up to 10MB)
@@ -907,7 +946,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                 attachments.map((att) => (
                   <div
                     key={att._id}
-                    className="flex items-center justify-between p-3 rounded-xl border border-slate-200/70 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50"
+                    className="flex items-center justify-between p-3 rounded-xl border border-slate-200/70 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50"
                   >
                     <div className="flex items-center gap-2.5 flex-1 min-w-0">
                       <Paperclip className="w-4 h-4 text-slate-400 shrink-0" />
@@ -947,7 +986,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
 
         {/* Tab 4: Comments Tab (Edit Mode) */}
         {activeTab === 'comments' && (
-          <div className="p-6 space-y-4 overflow-y-auto flex-1 flex flex-col">
+          <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 flex flex-col">
             {/* Comment list */}
             <div className="space-y-3 flex-1 overflow-y-auto pr-1">
               {comments.length === 0 ? (
@@ -966,7 +1005,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                   return (
                     <div
                       key={comment._id}
-                      className="p-3.5 rounded-xl border border-slate-200/70 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 space-y-2"
+                      className="p-3.5 rounded-xl border border-slate-200/70 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 space-y-2"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -1039,7 +1078,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                           </div>
                         </div>
                       ) : (
-                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap pl-8">
+                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words pl-8">
                           {comment.content}
                         </p>
                       )}
@@ -1074,7 +1113,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
 
         {/* Tab 5: Activity Log Tab (Edit Mode) */}
         {activeTab === 'activity' && (
-          <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
             {isLoadingActivity ? (
               <div className="py-12 flex justify-center">
                 <div className="w-6 h-6 border-2 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
@@ -1096,7 +1135,7 @@ export const TaskModal = ({ isOpen, onClose, onSubmit, task = null, isSubmitting
                         </span>
                       </p>
                       {log.metadata?.changes && (
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono bg-slate-100 dark:bg-slate-800 p-1.5 rounded-md">
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono bg-slate-100 dark:bg-slate-800 p-1.5 rounded-md break-all">
                           {JSON.stringify(log.metadata.changes)}
                         </p>
                       )}

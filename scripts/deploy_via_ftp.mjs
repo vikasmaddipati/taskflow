@@ -60,7 +60,12 @@ SMTP_SECURE=true
 SMTP_USER=noreply@zerosyntax.in
 SMTP_PASS=your_email_password_here
 FROM_EMAIL=noreply@zerosyntax.in
-FROM_NAME=TaskFlow
+FROM_NAME=TaskMate
+
+# ========================================================
+# GOOGLE AUTHENTICATION (OAuth 2.0 Client ID)
+# ========================================================
+GOOGLE_CLIENT_ID=870153795095-rnaveq3voksmqq78qoljjp6ccleuuegr.apps.googleusercontent.com
 
 # ========================================================
 # BILLING / RAZORPAY (OPTIONAL)

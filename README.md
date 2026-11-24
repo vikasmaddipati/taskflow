@@ -1,4 +1,4 @@
-# TaskFlow — Modern MERN Task Management Application
+# TaskMate — Modern MERN Task Management Application
 
 A full-stack, responsive, and modern productivity application built with the **MERN Stack** (MongoDB, Express.js, React 19 with Vite, and Node.js) and styled with **Tailwind CSS**.
 
@@ -73,7 +73,7 @@ A full-stack, responsive, and modern productivity application built with the **M
 ```text
 TaskMang/
 ├── package.json               # Root scripts to orchestrate client and server
-├── TaskFlow.apk               # Native Android application package (4.27 MB)
+├── TaskMate.apk               # Native Android application package (4.27 MB)
 ├── .gitignore                 # Git ignore for node_modules, .env, and build artifacts
 ├── .env.example               # Root template for environment variables
 ├── README.md                  # Detailed documentation
@@ -151,7 +151,7 @@ SMTP_SECURE=false
 SMTP_USER=your_email@gmail.com
 SMTP_PASS=your_app_password
 FROM_EMAIL=your_email@gmail.com
-FROM_NAME=TaskFlow Security
+FROM_NAME=TaskMate Security
 ```
 
 > **Note on Email & Google in Development:**
@@ -188,7 +188,7 @@ npm test
 Expected output:
 ```text
 ======================================================
-   TaskFlow Authentication & Security Test Suite      
+   TaskMate Authentication & Security Test Suite      
 ======================================================
 
 [PASS] 1. Health check returns 200 OK

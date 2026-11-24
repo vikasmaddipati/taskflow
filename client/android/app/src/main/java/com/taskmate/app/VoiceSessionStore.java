@@ -1,11 +1,11 @@
-package com.taskflow.app;
+package com.taskmate.app;
 
 import android.content.Context;
 import android.content.SharedPreferences;
 import java.util.TimeZone;
 
 public final class VoiceSessionStore {
-    private static final String PREFS_NAME = "TaskFlowVoicePrefs";
+    private static final String PREFS_NAME = "TaskMateVoicePrefs";
     private static final String KEY_BASE_URL = "base_url";
     private static final String KEY_TOKEN = "token";
     private static final String KEY_REFRESH_TOKEN = "refresh_token";

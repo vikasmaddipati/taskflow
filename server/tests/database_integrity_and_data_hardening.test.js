@@ -1,4 +1,4 @@
-// TaskFlow — Database & Data Integrity Hardening Automated Verification Suite
+// TaskMate — Database & Data Integrity Hardening Automated Verification Suite
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -40,7 +40,7 @@ async function request(endpoint, options = {}) {
 
 async function runDataIntegrityTests() {
   console.log('================================================================');
-  console.log('   TaskFlow Database & Data Integrity Hardening Verification   ');
+  console.log('   TaskMate Database & Data Integrity Hardening Verification   ');
   console.log('================================================================\n');
 
   let passed = 0;

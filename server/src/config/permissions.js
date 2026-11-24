@@ -1,6 +1,6 @@
 /**
  * Centralized Permission Registry & Role-to-Permission Mapping
- * Defines explicit capabilities and roles for TaskFlow Multi-Tenant SaaS.
+ * Defines explicit capabilities and roles for TaskMate Multi-Tenant SaaS.
  */
 
 export const PERMISSIONS = {
