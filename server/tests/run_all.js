@@ -22,7 +22,8 @@ function runScript(scriptPath) {
   return new Promise((resolve, reject) => {
     const child = spawn('node', [scriptPath], {
       stdio: 'inherit',
-      cwd: path.resolve(__dirname, '..')
+      cwd: path.resolve(__dirname, '..'),
+      env: { ...process.env, MOCK_EMAIL: 'true', NODE_ENV: 'test' }
     });
     child.on('close', (code) => {
       if (code === 0) resolve();
@@ -45,7 +46,7 @@ async function runAll() {
       persistentServer = spawn('node', ['src/server.js'], {
         cwd: path.resolve(__dirname, '..'),
         stdio: 'pipe',
-        env: { ...process.env, HOST: '127.0.0.1' }
+        env: { ...process.env, HOST: '127.0.0.1', MOCK_EMAIL: 'true', NODE_ENV: 'test' }
       });
       persistentServer.stdout.on('data', () => {});
       let serverErr = '';

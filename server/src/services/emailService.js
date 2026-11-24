@@ -66,7 +66,7 @@ export const sendEmail = async ({ to, subject, text, html, isMockMode = false })
   const transporter = customTransporter || (isSmtpConfigured() ? getTransporter() : null);
 
   // If automated test environment simulation or mock mode is enabled
-  if (!customTransporter && (process.env.MOCK_EMAIL === 'true' || isMockMode || !isSmtpConfigured())) {
+  if (!customTransporter && (process.env.NODE_ENV === 'test' || process.env.MOCK_EMAIL === 'true' || isMockMode || !isSmtpConfigured())) {
     console.log(`[EmailService:Mock] Simulated email to: ${to} | Subject: "${subject}"`);
     return {
       success: true,
