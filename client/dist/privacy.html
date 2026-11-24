@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - TaskMate</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --card-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --text: #f1f5f9;
+        --text-muted: #94a3b8;
+        --bg: #0b0f19;
+        --card-bg: #131b2e;
+        --border: #1e293b;
+        --card-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.4);
+      }
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+      line-height: 1.65;
+      color: var(--text);
+      background-color: var(--bg);
+      padding: 2rem 1rem;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.5rem;
+      box-shadow: var(--card-shadow);
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      background: rgba(79, 70, 229, 0.1);
+      color: var(--primary);
+      margin-bottom: 0.75rem;
+    }
+    h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      margin-bottom: 0.5rem;
+    }
+    .date {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+    h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-top: 2rem;
+      margin-bottom: 0.75rem;
+      color: var(--text);
+      border-left: 4px solid var(--primary);
+      padding-left: 0.75rem;
+    }
+    p {
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+    ul {
+      margin-left: 1.5rem;
+      margin-bottom: 1.25rem;
+      color: var(--text-muted);
+    }
+    li {
+      margin-bottom: 0.5rem;
+    }
+    .highlight-box {
+      background: rgba(79, 70, 229, 0.05);
+      border: 1px solid rgba(79, 70, 229, 0.2);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin: 1.5rem 0;
+    }
+    .highlight-box h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 0.5rem;
+    }
+    .highlight-box p {
+      color: var(--text);
+      font-size: 0.95rem;
+      margin-bottom: 0;
+    }
+    a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">Official Legal Document</span>
+      <h1>Privacy Policy for TaskMate</h1>
+      <p class="date">Effective Date: November 19, 2026 | Last Updated: November 19, 2026</p>
+    </header>
+
+    <p>
+      At <strong>TaskMate</strong> (accessible via our Android application <code>com.taskmate.app</code> and web platform <code>https://taskflow.zerosyntax.in</code>), we take your privacy and personal data protection seriously. This Privacy Policy details how we collect, process, and safeguard your information when you use our productivity and task management software.
+    </p>
+
+    <h2>1. Information We Collect</h2>
+    <p>To provide task collaboration and deadline reminders, we process the following types of information:</p>
+    <ul>
+      <li><strong>Account Details:</strong> Your name, email address, password hash, and optional profile avatar.</li>
+      <li><strong>Task and Productivity Data:</strong> Task titles, descriptions, due dates, priority labels, subtasks, checklists, completion statuses, and comments.</li>
+      <li><strong>Team & Organization Metadata:</strong> Workspaces, team member assignments, roles, and collaborative permissions.</li>
+      <li><strong>Communication Preferences:</strong> Optional phone number and email for receiving scheduled deadline notifications and task assignment alerts.</li>
+    </ul>
+
+    <div class="highlight-box">
+      <h3>2. Microphone Permission & Offline Audio Recognition (Vosk Engine)</h3>
+      <p>
+        TaskMate requests the <strong>RECORD_AUDIO</strong> and <strong>FOREGROUND_SERVICE_MICROPHONE</strong> permissions to enable hands-free offline voice task creation and voice assistant controls.
+        <br><br>
+        <strong>100% Local & Private Processing:</strong> All speech-to-text recognition is computed completely on your Android device using our embedded lightweight Vosk neural speech model. <strong>No audio files, voice recordings, or microphone streams are ever uploaded, recorded to disk, shared, or transmitted across the internet to our servers or third parties.</strong>
+      </p>
+    </div>
+
+    <h2>3. How We Use Your Information</h2>
+    <p>Your information is used solely to deliver the TaskMate core service, including:</p>
+    <ul>
+      <li>Synchronizing your tasks across your mobile app and web dashboard in real time.</li>
+      <li>Delivering requested deadline notifications (30-minute reminder alerts, overdue notices, and task assignment digests via in-app alerts, WhatsApp, or Google SMTP email).</li>
+      <li>Securing access via multi-tenant role-based access control (RBAC).</li>
+      <li>Ensuring system stability, preventing spam, and monitoring API performance.</li>
+    </ul>
+
+    <h2>4. Third-Party Services and Subprocessors</h2>
+    <p>We do NOT sell, rent, or monetize your personal data. We only interface with trusted infrastructure providers required to operate the application:</p>
+    <ul>
+      <li><strong>Google Sign-In:</strong> Optional OAuth provider for authentication.</li>
+      <li><strong>Email Delivery (SMTP / Nodemailer):</strong> Used strictly to dispatch user account verifications and task alerts.</li>
+      <li><strong>Cloud Infrastructure:</strong> Secure servers hosting MongoDB and encrypted HTTPS REST APIs.</li>
+    </ul>
+
+    <h2>5. Data Security and Encryption</h2>
+    <p>
+      All data in transit is encrypted using industry-standard Transport Layer Security (TLS 1.3 / HTTPS). Passwords are cryptographically hashed using salt and bcrypt. Access to your tenant database is protected by JSON Web Token (JWT) verification and tenant isolation filters.
+    </p>
+
+    <h2>6. Account Deletion and User Rights (GDPR & Google Play Data Safety)</h2>
+    <p>
+      You have the full right to access, export, or permanently erase your personal data at any time:
+    </p>
+    <ul>
+      <li><strong>In-App Deletion:</strong> You can delete your account and all associated tasks directly inside the app by navigating to <em>Settings &rarr; Danger Zone &rarr; Delete Account</em>.</li>
+      <li><strong>Web Deletion Form:</strong> You can also submit an automated deletion request on our public portal at <a href="/delete-account.html">https://taskflow.zerosyntax.in/delete-account.html</a>.</li>
+    </ul>
+    <p>Upon deletion, all user profile records, task history, uploaded attachments, and notification subscriptions are permanently expunged from our production databases within 48 hours.</p>
+
+    <h2>7. Children's Privacy</h2>
+    <p>
+      TaskMate is intended for workplace and individual task productivity. We do not knowingly collect personal information from children under the age of 13.
+    </p>
+
+    <h2>8. Contact Us</h2>
+    <p>
+      If you have questions, inquiries, or privacy concerns regarding this policy, please reach out to our team:
+    </p>
+    <ul>
+      <li><strong>Entity:</strong> ZeroSyntax & TaskMate Team</li>
+      <li><strong>Developer Contact:</strong> <a href="mailto:admin@zerosyntax.in">admin@zerosyntax.in</a></li>
+      <li><strong>Website:</strong> <a href="https://taskflow.zerosyntax.in">https://taskflow.zerosyntax.in</a></li>
+    </ul>
+
+    <footer>
+      <p>&copy; 2026 TaskMate / ZeroSyntax. All rights reserved.</p>
+    </footer>
+  </div>
+</body>
+</html>

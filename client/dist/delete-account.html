@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delete Account & Data - TaskMate</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <style>
+    :root {
+      --primary: #dc2626;
+      --primary-hover: #b91c1c;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --card-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --text: #f1f5f9;
+        --text-muted: #94a3b8;
+        --bg: #0b0f19;
+        --card-bg: #131b2e;
+        --border: #1e293b;
+        --card-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.4);
+      }
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+      line-height: 1.65;
+      color: var(--text);
+      background-color: var(--bg);
+      padding: 2rem 1rem;
+    }
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.5rem;
+      box-shadow: var(--card-shadow);
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+      margin-bottom: 1.75rem;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      background: rgba(220, 38, 38, 0.1);
+      color: var(--primary);
+      margin-bottom: 0.75rem;
+    }
+    h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      margin-bottom: 0.5rem;
+    }
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-top: 1.75rem;
+      margin-bottom: 0.75rem;
+    }
+    p {
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+    ol, ul {
+      margin-left: 1.5rem;
+      margin-bottom: 1.25rem;
+      color: var(--text-muted);
+    }
+    li {
+      margin-bottom: 0.5rem;
+    }
+    .warning-box {
+      background: rgba(220, 38, 38, 0.05);
+      border: 1px solid rgba(220, 38, 38, 0.2);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin: 1.5rem 0;
+    }
+    .warning-box h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 0.35rem;
+    }
+    .warning-box p {
+      color: var(--text);
+      font-size: 0.95rem;
+      margin-bottom: 0;
+    }
+    .action-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      background: rgba(0, 0, 0, 0.02);
+      margin-top: 1.5rem;
+    }
+    .btn {
+      display: inline-block;
+      background: var(--primary);
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: background 0.15s ease;
+      border: none;
+      cursor: pointer;
+    }
+    .btn:hover {
+      background: var(--primary-hover);
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">Google Play Data Safety & GDPR Article 17</span>
+      <h1>Request Account & Data Deletion</h1>
+      <p>TaskMate (Package: <code>com.taskmate.app</code>)</p>
+    </header>
+
+    <p>
+      In compliance with Google Play's Data Safety Policy and GDPR Article 17 (Right to Erasure), users of TaskMate may request complete and permanent deletion of their account and all associated personal data.
+    </p>
+
+    <div class="warning-box">
+      <h3>What data will be permanently deleted?</h3>
+      <p>
+        Executing this request permanently erases your user credentials, personal profile, tasks, subtask checklists, uploaded file attachments, reminder schedules, and collaborative workspace memberships. This action cannot be undone.
+      </p>
+    </div>
+
+    <h2>Option 1: Immediate In-App Deletion (Recommended)</h2>
+    <p>If you currently have access to the TaskMate application or web portal:</p>
+    <ol>
+      <li>Log in to your account at <a href="https://taskflow.zerosyntax.in">https://taskflow.zerosyntax.in</a> or launch the <strong>TaskMate</strong> mobile app.</li>
+      <li>Click on the <strong>Settings</strong> tab in the navigation sidebar.</li>
+      <li>Scroll down to the <strong>Danger Zone</strong> section.</li>
+      <li>Click <strong>Delete Account</strong>, type <code>DELETE</code> to confirm, and submit.</li>
+      <li>Your account, sessions, and data will be erased immediately.</li>
+    </ol>
+
+    <h2>Option 2: Direct Email / Web Deletion Request</h2>
+    <p>
+      If you have uninstalled the application or cannot access your account, you can submit an automated deletion request directly by sending an email from your registered email address to:
+    </p>
+
+    <div class="action-card">
+      <h3 style="margin-bottom: 0.5rem;">Manual Deletion Processing Desk</h3>
+      <p style="margin-bottom: 1rem;">
+        Email: <strong><a href="mailto:admin@zerosyntax.in?subject=TaskMate%20Account%20Deletion%20Request">admin@zerosyntax.in</a></strong><br>
+        Subject: <code>TaskMate Account Deletion Request</code><br>
+        Body: <em>Please include your registered email address.</em>
+      </p>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0;">
+        All verified requests submitted via email are processed within <strong>48 hours</strong>, after which all customer database records are expunged and a confirmation reply is returned.
+      </p>
+    </div>
+
+    <h2>Data Retention Policy</h2>
+    <p>
+      No personal or behavioral data is retained after deletion. Diagnostic logs containing anonymized IP addresses are rotated and permanently expunged every 30 days.
+    </p>
+
+    <footer>
+      <p>&copy; 2026 TaskMate / ZeroSyntax. View our <a href="/privacy.html">Privacy Policy</a>.</p>
+    </footer>
+  </div>
+</body>
+</html>

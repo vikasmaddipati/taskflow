@@ -15,10 +15,10 @@ backups/
 */backups/
 
 # Build Outputs
-dist/
-*/dist/
 build/
 */build/
+!client/dist/
+!client/dist/**
 
 # Logs
 *.log
