@@ -12,7 +12,10 @@ import {
   Plus,
   Phone,
   Layers,
-  Mail
+  Mail,
+  QrCode,
+  Smartphone,
+  Unlink
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -62,6 +65,15 @@ export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => 
   const [testResult, setTestResult] = useState(null);
   const [liveDispatches, setLiveDispatches] = useState([]);
 
+  // Baileys WhatsApp Gateway state
+  const [baileysState, setBaileysState] = useState({
+    status: 'disconnected',
+    qrCodeDataUrl: null,
+    connectedUser: null,
+    isLinked: false,
+    loading: false
+  });
+
   // Email configuration state
   const [emailSettings, setEmailSettings] = useState({
     adminEmail: '',
@@ -74,6 +86,69 @@ export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => 
   const [isSavingEmail, setIsSavingEmail] = useState(false);
   const [isSendingEmailTest, setIsSendingEmailTest] = useState(false);
   const [emailTestResult, setEmailTestResult] = useState(null);
+
+  // Fetch Baileys WhatsApp connection status & QR code
+  const fetchBaileysStatus = useCallback(async () => {
+    try {
+      const res = await api.get('/admin/baileys/status');
+      if (res.data.success) {
+        setBaileysState({
+          status: res.data.status,
+          qrCodeDataUrl: res.data.qrCodeDataUrl,
+          connectedUser: res.data.connectedUser,
+          isLinked: res.data.isLinked,
+          loading: false
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Initiate Baileys socket connection / generate QR code
+  const handleConnectBaileys = async () => {
+    try {
+      setBaileysState((prev) => ({ ...prev, loading: true }));
+      const res = await api.post('/admin/baileys/connect');
+      if (res.data.success) {
+        setBaileysState({
+          status: res.data.status,
+          qrCodeDataUrl: res.data.qrCodeDataUrl,
+          connectedUser: res.data.connectedUser,
+          isLinked: res.data.isLinked,
+          loading: false
+        });
+        if (showToast) showToast('WhatsApp QR code generated. Scan with your phone.', 'info');
+      }
+    } catch (err) {
+      setBaileysState((prev) => ({ ...prev, loading: false }));
+      if (showToast) showToast(err.response?.data?.message || 'Failed to initiate WhatsApp connection', 'error');
+    }
+  };
+
+  // Disconnect or unlink Baileys WhatsApp socket
+  const handleDisconnectBaileys = async () => {
+    try {
+      setBaileysState((prev) => ({ ...prev, loading: true }));
+      await api.post('/admin/baileys/disconnect', { logout: true });
+      await fetchBaileysStatus();
+      if (showToast) showToast('WhatsApp device unlinked successfully', 'success');
+    } catch {
+      setBaileysState((prev) => ({ ...prev, loading: false }));
+      if (showToast) showToast('Failed to disconnect WhatsApp', 'error');
+    }
+  };
+
+  // Poll Baileys status while viewing whatsapp tab
+  useEffect(() => {
+    if (activeTab === 'whatsapp') {
+      fetchBaileysStatus();
+      const interval = setInterval(() => {
+        fetchBaileysStatus();
+      }, 3500);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, fetchBaileysStatus]);
 
   // Fetch admin dashboard overview
   const fetchOverview = useCallback(async () => {
@@ -872,8 +947,100 @@ export const AdminPanelView = ({ showToast, onOpenCreateModal, onEditTask }) => 
             </form>
           </div>
 
-          {/* WhatsApp Live Feed & Dispatch Preview */}
+          {/* WhatsApp Device Connection & Live Feed */}
           <div className="space-y-6">
+            {/* Direct WhatsApp Web Gateway Pairing Card */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-5 h-5 text-emerald-600" />
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    WhatsApp Gateway Device
+                  </h3>
+                </div>
+                {baileysState.isLinked ? (
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 rounded-full border border-emerald-200 dark:border-emerald-800">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Linked
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-full">
+                    Not Linked
+                  </span>
+                )}
+              </div>
+
+              {baileysState.isLinked ? (
+                <div className="space-y-4">
+                  <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-xl border border-emerald-100 dark:border-emerald-900/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-500">Connected Number:</span>
+                      <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                        {baileysState.connectedUser?.phone ? `+${baileysState.connectedUser.phone}` : (whatsappSettings.adminPhone || 'Active')}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      All task assignment confirmations, 30-minute deadline warnings, and overdue alerts are dispatched through this linked WhatsApp session.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleDisconnectBaileys}
+                    disabled={baileysState.loading}
+                    className="w-full py-2.5 px-4 text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 rounded-xl border border-rose-200 dark:border-rose-900 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Unlink className="w-4 h-4" />
+                    <span>Unlink / Disconnect WhatsApp</span>
+                  </button>
+                </div>
+              ) : baileysState.qrCodeDataUrl ? (
+                <div className="space-y-4 text-center">
+                  <p className="text-xs text-slate-500">
+                    Scan this QR code with WhatsApp on your phone:
+                  </p>
+                  <div className="inline-block p-3 bg-white rounded-2xl shadow-md border border-slate-200">
+                    <img
+                      src={baileysState.qrCodeDataUrl}
+                      alt="WhatsApp Web QR Code"
+                      className="w-48 h-48 sm:w-56 sm:h-56 mx-auto object-contain rounded-lg"
+                    />
+                  </div>
+                  <div className="text-[11px] text-slate-500 text-left space-y-1 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
+                    <p className="font-semibold text-slate-700 dark:text-slate-300">How to link:</p>
+                    <p>1. Open WhatsApp on your phone</p>
+                    <p>2. Tap <strong>Menu (⋮)</strong> or <strong>Settings &rarr; Linked Devices</strong></p>
+                    <p>3. Tap <strong>Link a Device</strong> and scan this QR code</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleConnectBaileys}
+                    disabled={baileysState.loading}
+                    className="w-full py-2 px-3 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 rounded-lg flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${baileysState.loading ? 'animate-spin' : ''}`} />
+                    <span>Refresh QR Code</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Link your phone via WhatsApp Web to send physical messages to your number without any third-party fees.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleConnectBaileys}
+                    disabled={baileysState.loading}
+                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs shadow-md shadow-emerald-950/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <QrCode className="w-4 h-4" />
+                    <span>{baileysState.loading ? 'Generating QR Code...' : 'Connect WhatsApp (Scan QR Code)'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* WhatsApp Live Feed & Dispatch Preview */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
